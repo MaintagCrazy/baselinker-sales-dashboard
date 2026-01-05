@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 BaseLinker Sales Dashboard - FastAPI Application
-Displays all sold products with real-time updates and Excel export
+Displays all sold products with real-time updates, Excel export, and activity tracking
 """
 
 import os
@@ -24,6 +24,7 @@ BASELINKER_API_KEY = os.getenv("BASELINKER_API_KEY", "")
 BASELINKER_INVENTORY_ID = int(os.getenv("BASELINKER_INVENTORY_ID", "58952"))
 BASELINKER_API_URL = "https://api.baselinker.com/connector.php"
 WYSLANE_STATUS_ID = 273568  # Wyslane (Shipped)
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # Data cache
 cache = {
@@ -33,7 +34,99 @@ cache = {
     "is_refreshing": False
 }
 
-REFRESH_INTERVAL = 300  # 5 minutes in seconds
+REFRESH_INTERVAL = 3600  # 1 hour in seconds
+
+# Database connection
+db_conn = None
+
+def get_db_connection():
+    """Get PostgreSQL connection"""
+    global db_conn
+    if not DATABASE_URL:
+        return None
+    try:
+        import psycopg2
+        if db_conn is None or db_conn.closed:
+            db_conn = psycopg2.connect(DATABASE_URL)
+        return db_conn
+    except Exception as e:
+        print(f"Database connection error: {e}")
+        return None
+
+def init_database():
+    """Initialize database tables"""
+    conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        # Activity log table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMPTZ DEFAULT NOW(),
+                action VARCHAR(50),
+                total_orders INT,
+                total_variants INT,
+                total_units_sold INT,
+                details JSONB
+            )
+        """)
+        # Sales snapshot table (tracks changes over time)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS sales_snapshot (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMPTZ DEFAULT NOW(),
+                sku VARCHAR(100),
+                product_name TEXT,
+                units_sold INT,
+                current_stock INT
+            )
+        """)
+        conn.commit()
+        cur.close()
+        print("Database tables initialized")
+    except Exception as e:
+        print(f"Database init error: {e}")
+
+def log_activity(action: str, data: dict = None):
+    """Log activity to database"""
+    conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO activity_log (action, total_orders, total_variants, total_units_sold, details)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            action,
+            data.get('total_orders', 0) if data else 0,
+            data.get('total_variants', 0) if data else 0,
+            data.get('total_units_sold', 0) if data else 0,
+            json.dumps(data) if data else None
+        ))
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        print(f"Log activity error: {e}")
+
+def save_sales_snapshot(products: list):
+    """Save current sales data snapshot"""
+    conn = get_db_connection()
+    if not conn or not products:
+        return
+    try:
+        cur = conn.cursor()
+        for p in products[:50]:  # Save top 50 products
+            cur.execute("""
+                INSERT INTO sales_snapshot (sku, product_name, units_sold, current_stock)
+                VALUES (%s, %s, %s, %s)
+            """, (p['sku'], p['product_name'][:200], p['units_sold'], p['current_stock']))
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        print(f"Save snapshot error: {e}")
 
 
 def call_baselinker(method: str, params: dict = None) -> dict:
@@ -80,7 +173,7 @@ def fetch_all_wyslane_orders() -> list:
         all_orders.extend(fetched_orders)
         last_order_id = fetched_orders[-1].get('order_id', 0)
 
-        time.sleep(0.3)  # Rate limiting
+        time.sleep(0.3)
 
         if len(fetched_orders) < 100:
             break
@@ -163,17 +256,11 @@ def refresh_data():
     cache["is_refreshing"] = True
 
     try:
-        # Fetch orders
         orders = fetch_all_wyslane_orders()
-
-        # Aggregate sales
         sales_data = aggregate_sales(orders)
-
-        # Get inventory
         product_ids = [d['bl_product_id'] for d in sales_data.values() if d['bl_product_id']]
         inventory = get_inventory(product_ids)
 
-        # Build final product list
         products = []
         for variant_key, data in sales_data.items():
             bl_pid = data['bl_product_id']
@@ -187,10 +274,8 @@ def refresh_data():
                 'current_stock': inv_info.get('stock', 0)
             })
 
-        # Sort by units sold (descending)
         products.sort(key=lambda x: x['units_sold'], reverse=True)
 
-        # Update cache
         now = datetime.now(timezone.utc)
         cache["data"] = {
             "total_variants": len(products),
@@ -201,8 +286,13 @@ def refresh_data():
         cache["last_updated"] = now.isoformat()
         cache["next_refresh"] = (now + timedelta(seconds=REFRESH_INTERVAL)).isoformat()
 
+        # Log to database
+        log_activity("refresh", cache["data"])
+        save_sales_snapshot(products)
+
     except Exception as e:
         print(f"Error refreshing data: {e}")
+        log_activity("error", {"message": str(e)})
     finally:
         cache["is_refreshing"] = False
 
@@ -210,7 +300,7 @@ def refresh_data():
 
 
 async def background_refresh_task():
-    """Background task to refresh data every 5 minutes"""
+    """Background task to refresh data every hour"""
     while True:
         await asyncio.sleep(REFRESH_INTERVAL)
         refresh_data()
@@ -219,49 +309,42 @@ async def background_refresh_task():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
-    # Startup: Initial data load and start background task
+    init_database()
+    log_activity("startup")
     refresh_data()
     task = asyncio.create_task(background_refresh_task())
     yield
-    # Shutdown: Cancel background task
     task.cancel()
 
 
-# Create FastAPI app
 app = FastAPI(
     title="BaseLinker Sales Dashboard",
     description="Real-time sales tracking from BaseLinker",
     lifespan=lifespan
 )
 
-# Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/")
 async def root():
-    """Serve the dashboard HTML"""
     return FileResponse("static/index.html")
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Railway"""
     return {
         "status": "healthy",
         "last_updated": cache["last_updated"],
-        "data_loaded": cache["data"] is not None
+        "data_loaded": cache["data"] is not None,
+        "database_connected": get_db_connection() is not None
     }
 
 
 @app.get("/api/sales")
 async def get_sales():
-    """Get current sales data"""
     if cache["data"] is None:
-        return JSONResponse(
-            status_code=503,
-            content={"error": "Data not loaded yet. Please wait..."}
-        )
+        return JSONResponse(status_code=503, content={"error": "Data not loaded yet. Please wait..."})
 
     return {
         "last_updated": cache["last_updated"],
@@ -273,22 +356,47 @@ async def get_sales():
 
 @app.post("/api/refresh")
 async def force_refresh(background_tasks: BackgroundTasks):
-    """Force a data refresh"""
     if cache["is_refreshing"]:
         return {"status": "already_refreshing", "message": "Refresh already in progress"}
 
+    log_activity("manual_refresh_requested")
     background_tasks.add_task(refresh_data)
     return {"status": "started", "message": "Refresh started in background"}
 
 
+@app.get("/api/activity")
+async def get_activity():
+    """Get recent activity log"""
+    conn = get_db_connection()
+    if not conn:
+        return {"error": "Database not connected", "logs": []}
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT timestamp, action, total_orders, total_variants, total_units_sold
+            FROM activity_log ORDER BY timestamp DESC LIMIT 50
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        return {
+            "logs": [
+                {
+                    "timestamp": r[0].isoformat() if r[0] else None,
+                    "action": r[1],
+                    "total_orders": r[2],
+                    "total_variants": r[3],
+                    "total_units_sold": r[4]
+                } for r in rows
+            ]
+        }
+    except Exception as e:
+        return {"error": str(e), "logs": []}
+
+
 @app.get("/api/download")
 async def download_excel():
-    """Generate and download Excel report"""
     if cache["data"] is None:
-        return JSONResponse(
-            status_code=503,
-            content={"error": "Data not loaded yet"}
-        )
+        return JSONResponse(status_code=503, content={"error": "Data not loaded yet"})
 
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -298,17 +406,10 @@ async def download_excel():
     ws = wb.active
     ws.title = "Sales Report"
 
-    # Styles
     header_font = Font(bold=True, size=11, color="FFFFFF")
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    thin_border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-    # Title
     ws.merge_cells('A1:E1')
     ws['A1'] = "BASELINKER SALES REPORT - WYSLANE ORDERS"
     ws['A1'].font = Font(bold=True, size=14)
@@ -316,7 +417,6 @@ async def download_excel():
     ws.merge_cells('A2:E2')
     ws['A2'] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
 
-    # Headers
     headers = [("Product Name", 50), ("SKU", 25), ("Units Sold", 12), ("Current Stock", 14), ("Image URL", 40)]
 
     for col, (header, width) in enumerate(headers, 1):
@@ -326,15 +426,12 @@ async def download_excel():
         cell.border = thin_border
         ws.column_dimensions[get_column_letter(col)].width = width
 
-    # Data rows
     for row_idx, product in enumerate(cache["data"]["products"], 5):
         ws.cell(row=row_idx, column=1, value=product['product_name'][:80]).border = thin_border
         ws.cell(row=row_idx, column=2, value=product['sku']).border = thin_border
-
         units_cell = ws.cell(row=row_idx, column=3, value=product['units_sold'])
         units_cell.border = thin_border
         units_cell.alignment = Alignment(horizontal='center')
-
         stock_cell = ws.cell(row=row_idx, column=4, value=product['current_stock'])
         stock_cell.border = thin_border
         stock_cell.alignment = Alignment(horizontal='center')
@@ -342,26 +439,18 @@ async def download_excel():
             stock_cell.font = Font(bold=True, color="FF0000")
         elif product['current_stock'] < 5:
             stock_cell.font = Font(color="FF6600")
-
         ws.cell(row=row_idx, column=5, value=product['image_url'] or '').border = thin_border
 
-    # Summary row
     summary_row = len(cache["data"]["products"]) + 5
     ws.cell(row=summary_row, column=1, value=f"TOTAL: {cache['data']['total_variants']} variants").font = Font(bold=True)
     ws.cell(row=summary_row, column=3, value=cache['data']['total_units_sold']).font = Font(bold=True)
 
-    # Save to BytesIO
     output = BytesIO()
     wb.save(output)
     output.seek(0)
 
     filename = f"baselinker_sales_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-
-    return StreamingResponse(
-        output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
+    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
 if __name__ == "__main__":
