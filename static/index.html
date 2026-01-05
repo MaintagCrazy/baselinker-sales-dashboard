@@ -74,19 +74,34 @@
             </button>
         </div>
     </div>
-    <div class="container"><div id="content"><div class="loading"><div class="spinner"></div><p>Loading sales data...</p></div></div></div>
+    <div class="container">
+        <div id="content">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading sales data...</p>
+            </div>
+        </div>
+    </div>
     <script>
-        let salesData = null, sortColumn = 'units_sold', sortDirection = 'desc', countdownInterval = null, nextRefreshTime = null;
+        let salesData = null;
+        let sortColumn = 'units_sold';
+        let sortDirection = 'desc';
+        let countdownInterval = null;
+        let nextRefreshTime = null;
+
         async function fetchSalesData() {
             try {
                 const response = await fetch('/api/sales');
                 if (!response.ok) throw new Error('Failed to fetch data');
                 salesData = await response.json();
-                renderData(); updateHeader(); startCountdown();
+                renderData();
+                updateHeader();
+                startCountdown();
             } catch (error) {
                 document.getElementById('content').innerHTML = `<div class="error"><p>Error loading data: ${error.message}</p><p>Please try refreshing the page.</p></div>`;
             }
         }
+
         function updateHeader() {
             if (!salesData) return;
             document.getElementById('total-variants').textContent = `${salesData.total_variants} Products`;
@@ -94,35 +109,128 @@
             document.getElementById('total-orders').textContent = `${salesData.total_orders} Orders`;
             document.getElementById('last-updated').textContent = new Date(salesData.last_updated).toLocaleTimeString();
         }
+
         function startCountdown() {
             if (!salesData || !salesData.next_refresh) return;
             nextRefreshTime = new Date(salesData.next_refresh);
             if (countdownInterval) clearInterval(countdownInterval);
             countdownInterval = setInterval(() => {
                 const diff = Math.max(0, Math.floor((nextRefreshTime - new Date()) / 1000));
-                document.getElementById('countdown').textContent = `${Math.floor(diff / 60)}:${(diff % 60).toString().padStart(2, '0')}`;
+                const minutes = Math.floor(diff / 60);
+                const seconds = (diff % 60).toString().padStart(2, '0');
+                document.getElementById('countdown').textContent = `${minutes}:${seconds}`;
                 if (diff <= 0) fetchSalesData();
             }, 1000);
         }
+
         function renderData() {
-            if (!salesData || !salesData.products) { document.getElementById('content').innerHTML = '<div class="loading">No data available</div>'; return; }
+            if (!salesData || !salesData.products) {
+                document.getElementById('content').innerHTML = '<div class="loading">No data available</div>';
+                return;
+            }
+
             const products = [...salesData.products].sort((a, b) => {
-                let aVal = a[sortColumn], bVal = b[sortColumn];
-                if (typeof aVal === 'string') { aVal = aVal.toLowerCase(); bVal = bVal.toLowerCase(); }
-                return sortDirection === 'asc' ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
+                let aVal = a[sortColumn];
+                let bVal = b[sortColumn];
+                if (typeof aVal === 'string') {
+                    aVal = aVal.toLowerCase();
+                    bVal = bVal.toLowerCase();
+                }
+                if (sortDirection === 'asc') {
+                    return aVal > bVal ? 1 : -1;
+                } else {
+                    return aVal < bVal ? 1 : -1;
+                }
             });
-            const rows = products.map(p => `<tr><td>${p.image_url ? `<img src="${p.image_url}" class="product-image" alt="${p.sku}" onerror="this.outerHTML='<div class=\\'no-image\\'>No img</div>'">` : '<div class="no-image">No img</div>'}</td><td class="product-name" title="${escapeHtml(p.product_name)}">${escapeHtml(p.product_name)}</td><td class="sku">${escapeHtml(p.sku || '-')}</td><td class="units-sold">${p.units_sold}</td><td class="stock ${p.current_stock === 0 ? 'stock-zero' : p.current_stock < 5 ? 'stock-low' : 'stock-ok'}">${p.current_stock}</td></tr>`).join('');
-            document.getElementById('content').innerHTML = `<div class="table-wrapper"><table><thead><tr><th style="width:70px">Image</th><th onclick="sortBy('product_name')" class="${sortColumn==='product_name'?(sortDirection==='asc'?'sorted-asc':'sorted-desc'):''}">Product Name</th><th onclick="sortBy('sku')" class="${sortColumn==='sku'?(sortDirection==='asc'?'sorted-asc':'sorted-desc'):''}">SKU</th><th onclick="sortBy('units_sold')" class="${sortColumn==='units_sold'?(sortDirection==='asc'?'sorted-asc':'sorted-desc':'')}">Units Sold</th><th onclick="sortBy('current_stock')" class="${sortColumn==='current_stock'?(sortDirection==='asc'?'sorted-asc':'sorted-desc'):''}">Stock</th></tr></thead><tbody>${rows}</tbody></table><div class="summary">Showing <strong>${products.length}</strong> products | Total units sold: <strong>${salesData.total_units_sold}</strong> | Out of stock: <strong>${products.filter(p => p.current_stock === 0).length}</strong></div></div>`;
+
+            const rows = products.map(p => {
+                const stockClass = p.current_stock === 0 ? 'stock-zero' : p.current_stock < 5 ? 'stock-low' : 'stock-ok';
+                const imageHtml = p.image_url 
+                    ? `<img src="${p.image_url}" class="product-image" alt="${p.sku}" onerror="this.outerHTML='<div class=\\'no-image\\'>No img</div>'">`
+                    : '<div class="no-image">No img</div>';
+                return `<tr>
+                    <td>${imageHtml}</td>
+                    <td class="product-name" title="${escapeHtml(p.product_name)}">${escapeHtml(p.product_name)}</td>
+                    <td class="sku">${escapeHtml(p.sku || '-')}</td>
+                    <td class="units-sold">${p.units_sold}</td>
+                    <td class="stock ${stockClass}">${p.current_stock}</td>
+                </tr>`;
+            }).join('');
+
+            const getHeaderClass = (col) => {
+                if (sortColumn !== col) return '';
+                return sortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc';
+            };
+
+            document.getElementById('content').innerHTML = `
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:70px">Image</th>
+                                <th onclick="sortBy('product_name')" class="${getHeaderClass('product_name')}">Product Name</th>
+                                <th onclick="sortBy('sku')" class="${getHeaderClass('sku')}">SKU</th>
+                                <th onclick="sortBy('units_sold')" class="${getHeaderClass('units_sold')}">Units Sold</th>
+                                <th onclick="sortBy('current_stock')" class="${getHeaderClass('current_stock')}">Stock</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                    <div class="summary">
+                        Showing <strong>${products.length}</strong> products | 
+                        Total units sold: <strong>${salesData.total_units_sold}</strong> | 
+                        Out of stock: <strong>${products.filter(p => p.current_stock === 0).length}</strong>
+                    </div>
+                </div>`;
         }
-        function sortBy(column) { if (sortColumn === column) sortDirection = sortDirection === 'asc' ? 'desc' : 'asc'; else { sortColumn = column; sortDirection = column === 'product_name' || column === 'sku' ? 'asc' : 'desc'; } renderData(); }
-        function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+        function sortBy(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = (column === 'product_name' || column === 'sku') ? 'asc' : 'desc';
+            }
+            renderData();
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         async function forceRefresh() {
-            const btn = document.getElementById('refresh-btn'), status = document.getElementById('refresh-status');
-            btn.disabled = true; status.textContent = 'Refreshing...'; status.style.color = '#4472C4';
-            try { await fetch('/api/refresh', { method: 'POST' }); setTimeout(async () => { await fetchSalesData(); status.textContent = 'Updated!'; status.style.color = '#28a745'; setTimeout(() => { status.textContent = ''; }, 3000); }, 2000); } catch (error) { status.textContent = 'Error refreshing'; status.style.color = '#dc3545'; } finally { btn.disabled = false; }
+            const btn = document.getElementById('refresh-btn');
+            const status = document.getElementById('refresh-status');
+            btn.disabled = true;
+            status.textContent = 'Refreshing...';
+            status.style.color = '#4472C4';
+            try {
+                await fetch('/api/refresh', { method: 'POST' });
+                setTimeout(async () => {
+                    await fetchSalesData();
+                    status.textContent = 'Updated!';
+                    status.style.color = '#28a745';
+                    setTimeout(() => { status.textContent = ''; }, 3000);
+                }, 2000);
+            } catch (error) {
+                status.textContent = 'Error refreshing';
+                status.style.color = '#dc3545';
+            } finally {
+                btn.disabled = false;
+            }
         }
-        function downloadExcel() { window.location.href = '/api/download'; }
+
+        function downloadExcel() {
+            window.location.href = '/api/download';
+        }
+
+        // Initial load
         fetchSalesData();
+        
+        // Also refresh every 5 minutes as backup
         setInterval(fetchSalesData, 300000);
     </script>
 </body>
