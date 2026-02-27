@@ -32,6 +32,11 @@ BASELINKER_API_URL = "https://api.baselinker.com/connector.php"
 WYSLANE_STATUS_ID = 273568  # Wyslane (Shipped)
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
+# Google Sheets cost loading
+GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
+IMPORT_SHEET_ID = os.getenv("IMPORT_SHEET_ID", "1Ld-tbGXGIheTsLc0RCg5RdtbqkOty4gTf3wEFL9YufE")
+FALLBACK_MARKUP_GROSS = 3.444  # cost = gross_price / 3.444 (2.8x net markup + 23% VAT)
+
 # Data cache
 cache = {
     "data": None,
@@ -44,6 +49,7 @@ cache = {
     "po_items_map": None,
     "order_sources": {},
     "all_recent_orders": None,
+    "costs": ({}, {}),
 }
 
 REFRESH_INTERVAL = 3600  # 1 hour in seconds
@@ -202,6 +208,129 @@ def determine_category(name: str) -> str:
     return 'Other'
 
 
+# ========== COST LOADING ==========
+
+def load_costs_from_import_sheet():
+    """Load product costs from Google Sheets import tabs.
+    Replicates logic from Marbily App's sales_center_service.py.
+    """
+    costs_by_sku = {}
+    costs_by_base_sku = {}
+
+    if not GOOGLE_CREDENTIALS_JSON:
+        print("GOOGLE_CREDENTIALS_JSON not configured, skipping cost loading")
+        return costs_by_sku, costs_by_base_sku
+
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+
+        creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+        credentials = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=['https://www.googleapis.com/auth/spreadsheets.readonly']
+        )
+        client = gspread.authorize(credentials)
+        sheet = client.open_by_key(IMPORT_SHEET_ID)
+
+        for ws in sheet.worksheets():
+            all_data = ws.get_all_values()
+            if len(all_data) < 9:
+                continue
+
+            # Find header row (scan first 15 rows)
+            header_row_idx = None
+            for i in range(min(15, len(all_data))):
+                row_text = ' '.join([str(c).lower() for c in all_data[i][:20]])
+                if 'model' in row_text and ('total cost' in row_text or 'unit price' in row_text):
+                    header_row_idx = i
+                    break
+
+            if header_row_idx is None:
+                continue
+
+            headers = all_data[header_row_idx]
+
+            # Dynamic column detection
+            model_col = None
+            color_col = None
+            cost_col = None
+
+            for idx, header in enumerate(headers):
+                h = str(header).lower().strip()
+                if model_col is None and ('model' in h or h == 'sku'):
+                    model_col = idx
+                if color_col is None and ('color' in h or 'kolor' in h):
+                    color_col = idx
+                if cost_col is None and 'total cost' in h and 'pln' in h and 'all units' not in h:
+                    cost_col = idx
+
+            if model_col is None or cost_col is None:
+                continue
+
+            count = 0
+            for row in all_data[header_row_idx + 1:]:
+                if len(row) <= max(model_col, cost_col):
+                    continue
+
+                model = row[model_col].strip().upper() if model_col < len(row) else ""
+                color = row[color_col].strip().upper() if color_col and color_col < len(row) else ""
+                cost_str = row[cost_col].strip() if cost_col < len(row) else ""
+
+                if not model or not cost_str:
+                    continue
+
+                try:
+                    cost = float(cost_str.replace('z\u0142', '').replace('PLN', '').replace(',', '').strip())
+                    if cost > 0:
+                        if color and color not in ['N/A', '-', '']:
+                            costs_by_sku[f"{model}-{color}"] = cost
+                        costs_by_base_sku[model] = cost
+                        count += 1
+                except:
+                    continue
+
+            if count > 0:
+                print(f"  Sheet '{ws.title}': {count} costs loaded")
+
+        print(f"Total costs loaded: {len(costs_by_sku)} SKU, {len(costs_by_base_sku)} base SKU")
+
+    except Exception as e:
+        print(f"Error loading costs from sheets: {e}")
+        import traceback
+        traceback.print_exc()
+
+    return costs_by_sku, costs_by_base_sku
+
+
+def find_cost_for_sku(sku, costs_by_sku, costs_by_base_sku):
+    """Find cost for a SKU using 3-tier matching.
+    Returns (cost, match_type).
+    """
+    if not sku:
+        return 0, None
+
+    sku_upper = sku.strip().upper()
+
+    # 1. Exact match
+    if sku_upper in costs_by_sku:
+        return costs_by_sku[sku_upper], 'exact'
+
+    # 2. Base SKU match (part before first dash)
+    base_sku = sku_upper.split('-')[0] if '-' in sku_upper else sku_upper
+    if base_sku in costs_by_base_sku:
+        return costs_by_base_sku[base_sku], 'base'
+
+    # 3. Prefix match (any key starting with base_sku-)
+    for key, cost in costs_by_sku.items():
+        if key.startswith(base_sku + '-'):
+            return cost, 'prefix'
+
+    return 0, None
+
+
+# ========== ORDER FETCHING ==========
+
 def fetch_all_wyslane_orders() -> list:
     """Fetch ALL orders with 'Wyslane' status"""
     all_orders = []
@@ -322,6 +451,8 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
     Includes outlier detection: if a variant has 3+ price instances and one
     price is >10x the median, it's excluded from revenue (Allegro sometimes
     reports order totals as per-unit price).
+
+    Payment filter: only include COD or paid orders.
     """
     sales_by_variant = defaultdict(lambda: {
         'product_name': '',
@@ -334,6 +465,13 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
     })
 
     for order in orders:
+        # Payment filter: COD + paid only
+        payment_done = float(order.get('payment_done', 0) or 0)
+        payment_method = (order.get('payment_method', '') or '').lower()
+        is_cod = 'pobraniem' in payment_method or 'cod' in payment_method
+        if not is_cod and payment_done <= 0:
+            continue
+
         # Detect sales channel
         source = order.get('order_source', 'unknown')
         source_id = str(order.get('order_source_id', ''))
@@ -589,6 +727,26 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
 
     products.sort(key=lambda x: x['units_sold'], reverse=True)
 
+    # ========== COST ENRICHMENT ==========
+    costs_by_sku, costs_by_base_sku = cache.get("costs", ({}, {}))
+    total_cost = 0.0
+
+    for product in products:
+        cost, match_type = find_cost_for_sku(product['sku'], costs_by_sku, costs_by_base_sku)
+        if cost == 0 and product['units_sold'] > 0 and product['total_revenue'] > 0:
+            avg_price = product['total_revenue'] / product['units_sold']
+            cost = avg_price / FALLBACK_MARKUP_GROSS
+            match_type = 'fallback'
+        product['unit_cost'] = round(cost, 2)
+        product['total_cost'] = round(cost * product['units_sold'], 2)
+        product['cost_match'] = match_type
+        total_cost += product['total_cost']
+
+    # Financial calculations
+    net_revenue = round(total_revenue / 1.23, 2)
+    profit = round(net_revenue - total_cost, 2)
+    profit_margin = round((profit / net_revenue) * 100, 1) if net_revenue > 0 else 0
+
     # Build sorted channel breakdown (highest units first)
     channel_breakdown = []
     for ch in sorted(global_channel_units.keys(), key=lambda c: global_channel_units[c], reverse=True):
@@ -603,6 +761,10 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
         "total_units_sold": sum(p['units_sold'] for p in products),
         "total_orders": len(orders),
         "total_revenue": round(total_revenue, 2),
+        "net_revenue": net_revenue,
+        "total_cost": round(total_cost, 2),
+        "profit": profit,
+        "profit_margin": profit_margin,
         "channel_breakdown": channel_breakdown,
         "products": products
     }
@@ -619,6 +781,11 @@ def refresh_data():
         # Fetch order sources for proper channel names
         order_sources = fetch_order_sources()
         cache["order_sources"] = order_sources
+
+        # Load costs from Google Sheets
+        print("Loading costs from import sheets...")
+        costs = load_costs_from_import_sheet()
+        cache["costs"] = costs
 
         # Fetch orders and aggregate sales
         orders = fetch_all_wyslane_orders()

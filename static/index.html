@@ -22,17 +22,37 @@
         .lang-toggle:hover { background: rgba(255,255,255,0.25); }
         .lang-toggle .active-lang { background: white; color: #2c5aa0; padding: 2px 8px; border-radius: 10px; font-weight: 700; }
         .lang-toggle .inactive-lang { opacity: 0.7; padding: 2px 8px; }
-        .header-stats { display: flex; gap: 20px; font-size: 14px; opacity: 0.9; flex-wrap: wrap; align-items: flex-start; }
+
+        /* ========== HEADER STATS: 3-COLUMN GRID ========== */
+        .header-stats { display: grid; grid-template-columns: auto 1fr auto; gap: 20px; font-size: 14px; opacity: 0.9; align-items: stretch; }
+        .stats-column { display: flex; flex-direction: column; gap: 6px; }
         .stat-card { background: rgba(255,255,255,0.12); padding: 8px 16px; border-radius: 8px; display: flex; flex-direction: column; gap: 2px; }
         .stat-card .stat-value { font-size: 20px; font-weight: 700; }
         .stat-card .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; }
-        .channel-bar-card { background: rgba(255,255,255,0.12); padding: 10px 16px; border-radius: 8px; flex: 1; min-width: 280px; max-width: 500px; }
+        .channel-bar-card { background: rgba(255,255,255,0.12); padding: 10px 16px; border-radius: 8px; min-width: 280px; }
         .channel-bar-card .bar-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; margin-bottom: 8px; }
-        .channel-bar-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; }
+        .channel-bar-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; cursor: pointer; transition: opacity 0.2s, background 0.2s; border-radius: 4px; padding: 2px 4px; }
+        .channel-bar-item:hover { background: rgba(255,255,255,0.1); }
+        .channel-bar-item.bar-active { background: rgba(255,255,255,0.2); border-left: 3px solid white; }
+        .channel-bar-item.bar-dimmed { opacity: 0.35; }
         .channel-bar-item .bar-label { width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; flex-shrink: 0; }
         .channel-bar-item .bar-track { flex: 1; height: 16px; background: rgba(255,255,255,0.15); border-radius: 3px; overflow: hidden; position: relative; }
         .channel-bar-item .bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; display: flex; align-items: center; justify-content: flex-end; padding-right: 4px; }
         .channel-bar-item .bar-value { font-size: 11px; font-weight: 700; min-width: 35px; text-align: right; flex-shrink: 0; }
+        .channel-bar-hint { font-size: 10px; opacity: 0.5; margin-top: 4px; font-style: italic; }
+
+        /* ========== FINANCIAL PANEL ========== */
+        .financial-panel { background: rgba(255,255,255,0.12); padding: 12px 16px; border-radius: 8px; display: flex; flex-direction: column; gap: 2px; min-width: 170px; }
+        .financial-panel .fin-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; margin-bottom: 6px; }
+        .financial-panel .fin-row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; font-size: 13px; }
+        .financial-panel .fin-row .fin-label { opacity: 0.8; font-size: 12px; }
+        .financial-panel .fin-row .fin-value { font-weight: 700; font-size: 15px; }
+        .financial-panel .fin-row.fin-profit .fin-value { color: #7dffb3; }
+        .financial-panel .fin-row.fin-profit.negative .fin-value { color: #ff8a8a; }
+        .financial-panel .fin-divider { border-top: 1px solid rgba(255,255,255,0.2); margin: 4px 0; }
+        .financial-panel .fin-row.fin-margin { border-top: 1px solid rgba(255,255,255,0.15); padding-top: 6px; margin-top: 2px; }
+        .financial-panel .fin-row.fin-margin .fin-value { font-size: 14px; }
+
         .controls { background: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; flex-wrap: wrap; gap: 10px; }
         .refresh-info { display: flex; align-items: center; gap: 15px; font-size: 13px; color: #666; flex-wrap: wrap; }
         .countdown { font-weight: 600; color: #4472C4; }
@@ -249,11 +269,19 @@
             .header-top { flex-direction: column; gap: 6px; align-items: flex-start; }
             .stat-card .stat-value { font-size: 16px; }
             .stat-card .stat-label { font-size: 10px; }
-            .header-stats { gap: 6px; }
+            .header-stats { display: flex; flex-direction: column; gap: 8px; }
+            .stats-column { flex-direction: row; gap: 6px; flex-wrap: wrap; }
             .stat-card { padding: 5px 10px; }
             .channel-bar-card { display: none; }
+            .financial-panel { flex-direction: row; flex-wrap: wrap; gap: 10px; padding: 8px 12px; }
+            .financial-panel .fin-title { width: 100%; margin-bottom: 2px; }
+            .financial-panel .fin-row { flex: 1; min-width: 45%; flex-direction: column; gap: 1px; padding: 2px 0; }
+            .financial-panel .fin-row .fin-label { font-size: 10px; }
+            .financial-panel .fin-row .fin-value { font-size: 14px; }
+            .financial-panel .fin-divider { display: none; }
+            .financial-panel .fin-row.fin-margin { border-top: none; padding-top: 2px; margin-top: 0; }
 
-            /* Kill container padding — table goes edge-to-edge */
+            /* Kill container padding -- table goes edge-to-edge */
             .container { padding: 0; }
             .table-wrapper { border-radius: 0; box-shadow: none; }
 
@@ -261,7 +289,7 @@
             th:nth-child(2), td:nth-child(2) { display: none; }
             th:nth-child(4), td:nth-child(4) { display: none; }
 
-            /* Let browser auto-size visible columns — no fixed layout */
+            /* Let browser auto-size visible columns -- no fixed layout */
             table { table-layout: auto; width: 100%; }
             td, th { padding: 8px 6px; font-size: 12px; }
             th { font-size: 11px; white-space: nowrap; }
@@ -281,7 +309,7 @@
             .units-sold { font-size: 13px; }
             .stock { font-size: 13px; }
 
-            /* Detail panel — edge-to-edge, no white-box island look */
+            /* Detail panel -- edge-to-edge, no white-box island look */
             .detail-row td { padding: 0 !important; }
             .detail-panel { grid-template-columns: 1fr; padding: 12px 16px; gap: 10px; background: #f5f7fa; }
             .detail-section { padding: 14px; border-radius: 10px; }
@@ -317,21 +345,47 @@
             </div>
         </div>
         <div class="header-stats">
-            <div class="stat-card">
-                <span class="stat-value" id="total-variants">--</span>
-                <span class="stat-label" data-i18n="products">Products</span>
+            <!-- Left: stacked stat cards -->
+            <div class="stats-column">
+                <div class="stat-card">
+                    <span class="stat-value" id="total-variants">--</span>
+                    <span class="stat-label" data-i18n="products">Products</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="total-units">--</span>
+                    <span class="stat-label" data-i18n="unitsSold">Units Sold</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="total-orders">--</span>
+                    <span class="stat-label" data-i18n="orders">Orders</span>
+                </div>
             </div>
-            <div class="stat-card">
-                <span class="stat-value" id="total-units">--</span>
-                <span class="stat-label" data-i18n="unitsSold">Units Sold</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-value" id="total-orders">--</span>
-                <span class="stat-label" data-i18n="orders">Orders</span>
-            </div>
+            <!-- Center: channel bars -->
             <div class="channel-bar-card" id="global-channel-bar">
-                <div class="bar-title">Sales by Channel</div>
+                <div class="bar-title" data-i18n="salesByChannel">Sales by Channel</div>
                 <div id="channel-bars-container"><span style="opacity:0.6;font-size:12px">Loading...</span></div>
+                <div class="channel-bar-hint" data-i18n="clickToFilter">click a bar to filter table</div>
+            </div>
+            <!-- Right: financial panel -->
+            <div class="financial-panel">
+                <div class="fin-title" data-i18n="financials">FINANCIALS</div>
+                <div class="fin-row">
+                    <span class="fin-label" data-i18n="revenue">Revenue</span>
+                    <span class="fin-value" id="fin-revenue">--</span>
+                </div>
+                <div class="fin-row">
+                    <span class="fin-label" data-i18n="netRevenue">- VAT 23%</span>
+                    <span class="fin-value" id="fin-net-revenue">--</span>
+                </div>
+                <div class="fin-divider"></div>
+                <div class="fin-row fin-profit" id="fin-profit-row">
+                    <span class="fin-label" data-i18n="profit">Profit</span>
+                    <span class="fin-value" id="fin-profit">--</span>
+                </div>
+                <div class="fin-row fin-margin">
+                    <span class="fin-label" data-i18n="margin">Margin</span>
+                    <span class="fin-value" id="fin-margin">--%</span>
+                </div>
             </div>
         </div>
     </div>
@@ -537,7 +591,14 @@
                 navTime: 'Time',
                 navFilter: 'Filter',
                 navExport: 'Export',
-                navRefresh: 'Refresh'
+                navRefresh: 'Refresh',
+                salesByChannel: 'Sales by Channel',
+                clickToFilter: 'click a bar to filter table',
+                financials: 'FINANCIALS',
+                revenue: 'Revenue',
+                netRevenue: '- VAT 23%',
+                profit: 'Profit',
+                margin: 'Margin'
             },
             vi: {
                 dashboardTitle: 'B\u1ea3ng \u0111i\u1ec1u khi\u1ec3n BL',
@@ -599,7 +660,14 @@
                 navTime: 'Th\u1eddi gian',
                 navFilter: 'L\u1ecdc',
                 navExport: 'Xu\u1ea5t',
-                navRefresh: 'L\u00e0m m\u1edbi'
+                navRefresh: 'L\u00e0m m\u1edbi',
+                salesByChannel: 'K\u00eanh b\u00e1n h\u00e0ng',
+                clickToFilter: 'nh\u1ea5p v\u00e0o thanh \u0111\u1ec3 l\u1ecdc b\u1ea3ng',
+                financials: 'T\u00c0I CH\u00cdNH',
+                revenue: 'Doanh thu',
+                netRevenue: '- VAT 23%',
+                profit: 'L\u1ee3i nhu\u1eadn',
+                margin: 'Bi\u00ean l\u1ee3i'
             }
         };
 
@@ -802,6 +870,7 @@
         let nextRefreshTime = null;
         let expandedRowKey = null;
         let chartInstance = null;
+        let activeChannelFilter = null;
 
         async function fetchSalesData() {
             try {
@@ -837,8 +906,32 @@
             const luEl = document.getElementById('last-updated');
             if (luEl) luEl.textContent = new Date(salesData.last_updated).toLocaleTimeString();
             renderGlobalChannelBars();
+            updateFinancials();
         }
 
+        // ========== FINANCIALS ==========
+        function updateFinancials() {
+            if (!salesData) return;
+            const fmtPLN = (v) => v.toLocaleString('pl-PL', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+
+            const revEl = document.getElementById('fin-revenue');
+            const netEl = document.getElementById('fin-net-revenue');
+            const profitEl = document.getElementById('fin-profit');
+            const marginEl = document.getElementById('fin-margin');
+            const profitRow = document.getElementById('fin-profit-row');
+
+            if (revEl) revEl.textContent = fmtPLN(salesData.total_revenue || 0) + ' PLN';
+            if (netEl) netEl.textContent = fmtPLN(salesData.net_revenue || 0) + ' PLN';
+            if (profitEl) profitEl.textContent = fmtPLN(salesData.profit || 0) + ' PLN';
+            if (marginEl) marginEl.textContent = (salesData.profit_margin || 0) + '%';
+
+            // Color profit row red if negative
+            if (profitRow) {
+                profitRow.classList.toggle('negative', (salesData.profit || 0) < 0);
+            }
+        }
+
+        // ========== CHANNEL BARS (Interactive) ==========
         function renderGlobalChannelBars() {
             const container = document.getElementById('channel-bars-container');
             if (!container) return;
@@ -867,13 +960,23 @@
             breakdown.forEach((ch, i) => {
                 const pct = maxUnits > 0 ? Math.max(2, (ch.units / maxUnits) * 100) : 0;
                 const color = channelColors[ch.channel] || defaultColors[i % defaultColors.length];
-                html += `<div class="channel-bar-item">
+                const isActive = activeChannelFilter === ch.channel;
+                const isDimmed = activeChannelFilter && !isActive;
+                html += `<div class="channel-bar-item ${isActive ? 'bar-active' : ''} ${isDimmed ? 'bar-dimmed' : ''}"
+                              onclick="toggleChannelFilter('${escapeHtml(ch.channel)}')"
+                              title="${escapeHtml(ch.channel)}">
                     <span class="bar-label" title="${escapeHtml(ch.channel)}">${escapeHtml(ch.channel)}</span>
                     <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
                     <span class="bar-value">${ch.units}</span>
                 </div>`;
             });
             container.innerHTML = html;
+        }
+
+        function toggleChannelFilter(channel) {
+            activeChannelFilter = (activeChannelFilter === channel) ? null : channel;
+            renderGlobalChannelBars();
+            renderData();
         }
 
         function startCountdown() {
@@ -934,6 +1037,13 @@
         function getFilteredProducts() {
             if (!salesData || !salesData.products) return [];
             let products = salesData.products;
+
+            // Channel filter (from clicking channel bars)
+            if (activeChannelFilter) {
+                products = products.filter(p =>
+                    p.sales_by_channel && Object.keys(p.sales_by_channel).includes(activeChannelFilter)
+                );
+            }
 
             const catFilter = document.getElementById('filter-category').value;
             if (catFilter) {
