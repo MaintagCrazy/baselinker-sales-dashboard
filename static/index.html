@@ -554,6 +554,10 @@
 
         let currentLang = localStorage.getItem('dashboard_lang') || 'en';
 
+        function imgError(el) {
+            el.outerHTML = '<div class="no-image">No img</div>';
+        }
+
         function t(key) {
             return (translations[currentLang] && translations[currentLang][key]) || translations.en[key] || key;
         }
@@ -902,7 +906,7 @@
             products.forEach((p, idx) => {
                 const stockClass = p.current_stock === 0 ? 'stock-zero' : p.current_stock < 5 ? 'stock-low' : 'stock-ok';
                 const imageHtml = p.image_url
-                    ? `<img src="${p.image_url}" class="product-image" alt="${escapeHtml(p.sku)}" onerror="this.outerHTML='<div class=\\"no-image\\">No img</div>'">`
+                    ? `<img src="${p.image_url}" class="product-image" alt="${escapeHtml(p.sku)}" onerror="imgError(this)">`
                     : '<div class="no-image">No img</div>';
                 const rowKey = p.sku || p.bl_product_id;
                 const isExpanded = expandedRowKey === rowKey;

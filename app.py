@@ -42,6 +42,7 @@ cache = {
     "raw_orders": None,
     "inventory": None,
     "po_items_map": None,
+    "order_sources": {},
 }
 
 REFRESH_INTERVAL = 3600  # 1 hour in seconds
@@ -232,7 +233,24 @@ def fetch_all_wyslane_orders() -> list:
     return all_orders
 
 
-def aggregate_sales(orders: list) -> dict:
+def fetch_order_sources() -> dict:
+    """Fetch order sources mapping (source_id -> name) from BaseLinker API"""
+    result = call_baselinker('getOrderSources')
+    if "error" in result:
+        print(f"Error fetching order sources: {result.get('error')}")
+        return {}
+
+    # BaseLinker returns {"sources": {"12345": {"name": "Glamova", ...}, ...}}
+    sources_dict = result.get('sources', {})
+    source_names = {}
+
+    for source_id, source_info in sources_dict.items():
+        source_names[str(source_id)] = source_info.get('name', source_id)
+
+    return source_names
+
+
+def aggregate_sales(orders: list, source_names: dict = None) -> dict:
     """Aggregate sales by variant with revenue and channel tracking"""
     sales_by_variant = defaultdict(lambda: {
         'product_name': '',
@@ -246,7 +264,12 @@ def aggregate_sales(orders: list) -> dict:
     for order in orders:
         # Detect sales channel
         source = order.get('order_source', 'unknown')
-        if 'allegro' in source.lower():
+        source_id = str(order.get('order_source_id', ''))
+
+        # Use the source name from the mapping if available
+        if source_names and source_id in source_names:
+            channel = source_names[source_id]
+        elif 'allegro' in source.lower():
             channel = 'Allegro'
         elif 'shopify' in source.lower() or source == 'shop':
             channel = 'Shopify'
@@ -419,9 +442,9 @@ def filter_products(products: list, category: str = "", po: str = "", search: st
     return filtered
 
 
-def build_response(orders: list, inventory: dict, po_items_map: dict) -> dict:
+def build_response(orders: list, inventory: dict, po_items_map: dict, source_names: dict = None) -> dict:
     """Build product list from orders + inventory + PO data. Reusable for date-filtered views."""
-    sales_data = aggregate_sales(orders)
+    sales_data = aggregate_sales(orders, source_names)
 
     products = []
     total_revenue = 0.0
@@ -469,13 +492,17 @@ def refresh_data():
     cache["is_refreshing"] = True
 
     try:
+        # Fetch order sources for proper channel names
+        order_sources = fetch_order_sources()
+        cache["order_sources"] = order_sources
+
         # Fetch orders and aggregate sales
         orders = fetch_all_wyslane_orders()
 
         # Cache raw orders for date-filtered re-aggregation
         cache["raw_orders"] = orders
 
-        sales_data = aggregate_sales(orders)
+        sales_data = aggregate_sales(orders, order_sources)
         product_ids = [d['bl_product_id'] for d in sales_data.values() if d['bl_product_id']]
         inventory = get_inventory(product_ids)
 
@@ -531,7 +558,7 @@ def refresh_data():
         cache["po_items_map"] = po_items_map
 
         # Build full response using helper
-        response_data = build_response(orders, inventory, po_items_map)
+        response_data = build_response(orders, inventory, po_items_map, order_sources)
 
         now = datetime.now(timezone.utc)
         cache["data"] = response_data
@@ -617,6 +644,7 @@ async def get_sales(
     raw_orders = cache.get("raw_orders")
     inventory = cache.get("inventory") or {}
     po_items_map = cache.get("po_items_map") or {}
+    order_sources = cache.get("order_sources", {})
 
     if raw_orders is None:
         return JSONResponse(status_code=503, content={"error": "Raw order data not available. Please wait for refresh."})
@@ -645,7 +673,7 @@ async def get_sales(
         if isinstance(order_ts, (int, float)) and ts_from <= order_ts < ts_to:
             filtered_orders.append(order)
 
-    response_data = build_response(filtered_orders, inventory, po_items_map)
+    response_data = build_response(filtered_orders, inventory, po_items_map, order_sources)
 
     return {
         "last_updated": cache["last_updated"],
@@ -704,6 +732,51 @@ async def get_activity():
         return {"error": str(e), "logs": []}
 
 
+@app.get("/api/debug/orders")
+async def debug_orders():
+    """Debug: show timestamp fields for recent orders to diagnose date filtering"""
+    raw_orders = cache.get("raw_orders")
+    if not raw_orders:
+        return {"error": "No orders cached"}
+
+    # Get the 20 most recent orders by date_add
+    sorted_orders = sorted(raw_orders, key=lambda o: o.get("date_add", 0), reverse=True)[:20]
+
+    debug_list = []
+    for o in sorted_orders:
+        date_add = o.get("date_add", 0)
+        date_confirmed = o.get("date_confirmed", 0)
+        date_in_status = o.get("date_in_status", 0)
+
+        debug_list.append({
+            "order_id": o.get("order_id"),
+            "date_add": date_add,
+            "date_add_human": datetime.fromtimestamp(date_add, tz=POLISH_TZ).strftime("%Y-%m-%d %H:%M:%S") if date_add else None,
+            "date_confirmed": date_confirmed,
+            "date_confirmed_human": datetime.fromtimestamp(date_confirmed, tz=POLISH_TZ).strftime("%Y-%m-%d %H:%M:%S") if date_confirmed else None,
+            "date_in_status": date_in_status,
+            "date_in_status_human": datetime.fromtimestamp(date_in_status, tz=POLISH_TZ).strftime("%Y-%m-%d %H:%M:%S") if date_in_status else None,
+            "order_source": o.get("order_source"),
+            "order_source_id": o.get("order_source_id"),
+            "products_count": len(o.get("products", [])),
+            "products_summary": [
+                {
+                    "name": p.get("name", "")[:50],
+                    "sku": p.get("sku", ""),
+                    "qty": p.get("quantity"),
+                    "price_brutto": p.get("price_brutto"),
+                }
+                for p in o.get("products", [])[:3]
+            ]
+        })
+
+    return {
+        "total_cached_orders": len(raw_orders),
+        "source_names": cache.get("order_sources", {}),
+        "recent_orders": debug_list
+    }
+
+
 @app.get("/api/download")
 async def download_excel(
     category: str = Query("", description="Filter by category"),
@@ -720,6 +793,7 @@ async def download_excel(
         raw_orders = cache.get("raw_orders")
         inventory = cache.get("inventory") or {}
         po_items_map = cache.get("po_items_map") or {}
+        order_sources = cache.get("order_sources", {})
 
         if raw_orders is None:
             return JSONResponse(status_code=503, content={"error": "Raw order data not available"})
@@ -742,7 +816,7 @@ async def download_excel(
             o for o in raw_orders
             if ts_from <= o.get("date_add", 0) < ts_to
         ]
-        source_data = build_response(filtered_orders, inventory, po_items_map)
+        source_data = build_response(filtered_orders, inventory, po_items_map, order_sources)
     else:
         source_data = cache["data"]
 
