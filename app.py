@@ -43,6 +43,7 @@ cache = {
     "inventory": None,
     "po_items_map": None,
     "order_sources": {},
+    "all_recent_orders": None,
 }
 
 REFRESH_INTERVAL = 3600  # 1 hour in seconds
@@ -233,32 +234,103 @@ def fetch_all_wyslane_orders() -> list:
     return all_orders
 
 
+def fetch_recent_orders_all_statuses(days: int = 90) -> list:
+    """Fetch orders from ALL statuses for date-filtered views.
+
+    When filtering by date (Today, Yesterday, etc.), we want ALL orders placed
+    on that date regardless of their current status — not just shipped ones.
+    """
+    from_ts = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp())
+    all_orders = []
+    last_order_id = 0
+
+    while True:
+        params = {
+            'date_from': from_ts,
+            'get_unconfirmed_orders': False,
+        }
+        # NO status_id param -> fetches all statuses
+        if last_order_id > 0:
+            params['id_from'] = last_order_id
+
+        result = call_baselinker('getOrders', params)
+        if "error" in result:
+            print(f"Error fetching all-status orders: {result.get('error')}")
+            break
+
+        fetched = result.get('orders', [])
+        if not fetched:
+            break
+
+        all_orders.extend(fetched)
+        last_order_id = fetched[-1].get('order_id', 0)
+        time.sleep(0.3)
+
+        if len(fetched) < 100:
+            break
+
+    print(f"Fetched {len(all_orders)} orders from all statuses (last {days} days)")
+    return all_orders
+
+
 def fetch_order_sources() -> dict:
-    """Fetch order sources mapping (source_id -> name) from BaseLinker API"""
+    """Fetch order sources mapping (source_id -> name) from BaseLinker API.
+
+    API returns nested dict: {sources: {type: {account_id: name_or_info}}}
+    e.g. {sources: {allegro: {24535: "Marbily", 26446: "Glamova"}, shop: {5017156: "Marbily"}}}
+    """
     result = call_baselinker('getOrderSources')
     if "error" in result:
         print(f"Error fetching order sources: {result.get('error')}")
         return {}
 
-    # BaseLinker returns {"sources": {"12345": {"name": "Glamova", ...}, ...}}
-    sources_dict = result.get('sources', {})
     source_names = {}
 
-    for source_id, source_info in sources_dict.items():
-        source_names[str(source_id)] = source_info.get('name', source_id)
+    # Iterate all top-level keys (skip 'status')
+    for key, val in result.items():
+        if key == 'status':
+            continue
+        # val is either the 'sources' wrapper dict or a direct type dict
+        if not isinstance(val, dict):
+            continue
 
+        # Check if this is the 'sources' wrapper: {type: {id: name}}
+        # or a direct type-level dict: {id: name}
+        for source_type, accounts in val.items():
+            if not isinstance(accounts, dict):
+                continue
+            # accounts = {account_id: name_string_or_dict}
+            for acc_id, acc_name in accounts.items():
+                if isinstance(acc_name, dict):
+                    name = acc_name.get('name', str(acc_id))
+                else:
+                    name = str(acc_name)
+                # Prefix with type for clarity (except personal/generic)
+                type_label = source_type.capitalize()
+                if type_label in ('Personal', 'Order_return', '0'):
+                    source_names[str(acc_id)] = name
+                else:
+                    source_names[str(acc_id)] = f"{type_label} - {name}" if name != type_label else name
+
+    print(f"Parsed order sources: {source_names}")
     return source_names
 
 
 def aggregate_sales(orders: list, source_names: dict = None) -> dict:
-    """Aggregate sales by variant with revenue and channel tracking"""
+    """Aggregate sales by variant with revenue and channel tracking.
+
+    Includes outlier detection: if a variant has 3+ price instances and one
+    price is >10x the median, it's excluded from revenue (Allegro sometimes
+    reports order totals as per-unit price).
+    """
     sales_by_variant = defaultdict(lambda: {
         'product_name': '',
         'sku': '',
         'units_sold': 0,
         'bl_product_id': '',
         'total_revenue': 0.0,
-        'sales_by_channel': defaultdict(int)
+        'sales_by_channel': defaultdict(int),
+        '_price_instances': [],  # track individual prices for outlier detection
     })
 
     for order in orders:
@@ -296,10 +368,29 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
             sales_by_variant[variant_key]['bl_product_id'] = bl_product_id
             sales_by_variant[variant_key]['total_revenue'] += price * qty
             sales_by_variant[variant_key]['sales_by_channel'][channel] += qty
+            sales_by_variant[variant_key]['_price_instances'].append({'price': price, 'qty': qty})
 
-    # Convert defaultdicts to regular dicts for JSON serialization
+    # Post-process: detect and exclude outlier prices per variant
     result = {}
     for key, val in sales_by_variant.items():
+        instances = val.pop('_price_instances', [])
+        prices = [inst['price'] for inst in instances if inst['price'] > 0]
+
+        if len(prices) >= 3:
+            sorted_prices = sorted(prices)
+            median_price = sorted_prices[len(sorted_prices) // 2]
+            if median_price > 0:
+                # Recalculate revenue excluding outliers (price > 10x median)
+                clean_revenue = sum(
+                    inst['price'] * inst['qty'] for inst in instances
+                    if inst['price'] <= median_price * 10
+                )
+                if clean_revenue != val['total_revenue']:
+                    excluded = val['total_revenue'] - clean_revenue
+                    print(f"Outlier detected for {key}: excluded {excluded:.2f} PLN "
+                          f"(median={median_price:.2f}, threshold={median_price*10:.2f})")
+                    val['total_revenue'] = clean_revenue
+
         val['sales_by_channel'] = dict(val['sales_by_channel'])
         result[key] = val
 
@@ -499,8 +590,13 @@ def refresh_data():
         # Fetch orders and aggregate sales
         orders = fetch_all_wyslane_orders()
 
-        # Cache raw orders for date-filtered re-aggregation
+        # Cache raw orders (Wysłane only) for "All Time" view
         cache["raw_orders"] = orders
+
+        # Also fetch recent orders from ALL statuses for date-filtered views
+        # (Today/Yesterday/etc. should show all orders, not just shipped ones)
+        all_recent = fetch_recent_orders_all_statuses(days=90)
+        cache["all_recent_orders"] = all_recent
 
         sales_data = aggregate_sales(orders, order_sources)
         product_ids = [d['bl_product_id'] for d in sales_data.values() if d['bl_product_id']]
@@ -640,8 +736,9 @@ async def get_sales(
             **cache["data"]
         }
 
-    # With date params -> filter raw orders and re-aggregate
-    raw_orders = cache.get("raw_orders")
+    # With date params -> use ALL-status orders (not just Wysłane)
+    # so "Yesterday" shows all 12 orders, not just 2 shipped ones
+    raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
     inventory = cache.get("inventory") or {}
     po_items_map = cache.get("po_items_map") or {}
     order_sources = cache.get("order_sources", {})
@@ -735,12 +832,15 @@ async def get_activity():
 @app.get("/api/debug/orders")
 async def debug_orders():
     """Debug: show timestamp fields for recent orders to diagnose date filtering"""
+    # Use all-status orders for debug (shows the full picture)
+    all_recent = cache.get("all_recent_orders")
     raw_orders = cache.get("raw_orders")
-    if not raw_orders:
+    debug_source = all_recent or raw_orders
+    if not debug_source:
         return {"error": "No orders cached"}
 
     # Get the 20 most recent orders by date_add
-    sorted_orders = sorted(raw_orders, key=lambda o: o.get("date_add", 0), reverse=True)[:20]
+    sorted_orders = sorted(debug_source, key=lambda o: o.get("date_add", 0), reverse=True)[:20]
 
     debug_list = []
     for o in sorted_orders:
@@ -771,7 +871,8 @@ async def debug_orders():
         })
 
     return {
-        "total_cached_orders": len(raw_orders),
+        "total_cached_wyslane_orders": len(raw_orders) if raw_orders else 0,
+        "total_cached_all_status_orders": len(all_recent) if all_recent else 0,
         "source_names": cache.get("order_sources", {}),
         "recent_orders": debug_list
     }
@@ -790,7 +891,8 @@ async def download_excel(
 
     # Determine source products based on date filter
     if date_from or date_to:
-        raw_orders = cache.get("raw_orders")
+        # Use ALL-status orders for date-filtered views (same as /api/sales)
+        raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
         inventory = cache.get("inventory") or {}
         po_items_map = cache.get("po_items_map") or {}
         order_sources = cache.get("order_sources", {})
