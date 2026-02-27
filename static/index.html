@@ -243,24 +243,51 @@
             .time-bar { display: none; }
             .filter-bar { display: none; }
 
-            .header { padding: 16px 20px; }
+            .header { padding: 12px 16px; }
             .header h1 { font-size: 18px; }
+            .header-top { flex-direction: column; gap: 6px; align-items: flex-start; }
             .stat-card .stat-value { font-size: 16px; }
             .stat-card .stat-label { font-size: 10px; }
-            .header-stats { gap: 8px; }
-            .stat-card { padding: 6px 12px; }
-            .channel-bar-card { min-width: unset; max-width: unset; width: 100%; }
-            .channel-bar-item .bar-label { width: 90px; font-size: 11px; }
-            .container { padding: 12px 12px; }
-            .product-name { max-width: 160px; font-size: 13px; }
-            td, th { padding: 10px 8px; font-size: 12px; }
-            .product-image, .no-image { width: 40px; height: 40px; }
-            th { font-size: 11px; }
-            .detail-panel { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
-            .header-top { flex-direction: column; gap: 8px; align-items: flex-start; }
+            .header-stats { gap: 6px; }
+            .stat-card { padding: 5px 10px; }
 
-            /* Hide category column on mobile */
+            /* Hide channel bar chart on mobile header — too cramped */
+            .channel-bar-card { display: none; }
+
+            .container { padding: 8px 8px; }
+
+            /* Table: hide Product Name (col 2) and Category (col 4) on mobile */
+            /* Columns: 1=Image, 2=Name, 3=SKU, 4=Category, 5=Units, 6=Stock */
+            th:nth-child(2), td:nth-child(2) { display: none; }
             th:nth-child(4), td:nth-child(4) { display: none; }
+
+            /* Compact table cells */
+            td, th { padding: 8px 6px; font-size: 12px; }
+            .product-image, .no-image { width: 36px; height: 36px; }
+            th { font-size: 11px; white-space: nowrap; }
+            .sku { font-size: 11px; word-break: break-all; }
+            .units-sold { font-size: 13px; }
+            .stock { font-size: 13px; }
+            table { table-layout: fixed; width: 100%; }
+            /* Image col slim, SKU gets most space, Units + Stock fixed */
+            th:nth-child(1), td:nth-child(1) { width: 44px; }
+            th:nth-child(3), td:nth-child(3) { width: auto; }
+            th:nth-child(5), td:nth-child(5) { width: 52px; text-align: center; }
+            th:nth-child(6), td:nth-child(6) { width: 48px; text-align: center; }
+
+            /* Detail panel: single column, full width, no overflow */
+            .detail-panel { grid-template-columns: 1fr; padding: 10px; gap: 10px; }
+            .detail-section { padding: 12px; }
+            .detail-section h4 { font-size: 12px; }
+            .detail-stat { font-size: 13px; flex-wrap: wrap; }
+            .detail-stat .value { word-break: break-all; }
+            .chart-container { max-width: 180px; }
+
+            /* Summary bar at bottom */
+            .summary { font-size: 12px; padding: 10px 12px; }
+
+            /* Hide Export button in floating nav */
+            #nav-download { display: none; }
         }
 
         /* Large screens - never show mobile views */
@@ -1123,19 +1150,37 @@
 
             // Animate the nav refresh button on mobile
             const navRefresh = document.getElementById('nav-refresh');
-            if (navRefresh) navRefresh.style.animation = 'spin 1s linear infinite';
+            const navRefreshSvg = navRefresh ? navRefresh.querySelector('svg') : null;
+            if (navRefreshSvg) navRefreshSvg.style.animation = 'spin 1s linear infinite';
 
             try {
-                await fetch('/api/refresh', { method: 'POST' });
-                setTimeout(async () => {
-                    await fetchSalesData();
-                    if (status) { status.textContent = 'Updated!'; status.style.color = '#28a745'; setTimeout(() => { status.textContent = ''; }, 3000); }
-                    if (navRefresh) navRefresh.style.animation = '';
-                }, 2000);
+                const resp = await fetch('/api/refresh', { method: 'POST' });
+                const result = await resp.json();
+                // Poll until refresh completes (backend runs in background)
+                let attempts = 0;
+                const poll = async () => {
+                    attempts++;
+                    if (attempts > 30) { // max 30s
+                        if (navRefreshSvg) navRefreshSvg.style.animation = '';
+                        if (btn) btn.disabled = false;
+                        return;
+                    }
+                    const check = await fetch('/api/sales');
+                    const data = await check.json();
+                    if (data.is_refreshing) {
+                        setTimeout(poll, 1000);
+                    } else {
+                        await fetchSalesData();
+                        if (status) { status.textContent = 'Updated!'; status.style.color = '#28a745'; setTimeout(() => { status.textContent = ''; }, 3000); }
+                        if (navRefreshSvg) navRefreshSvg.style.animation = '';
+                        if (btn) btn.disabled = false;
+                    }
+                };
+                // Give backend a moment to start, then poll
+                setTimeout(poll, 2000);
             } catch (error) {
                 if (status) { status.textContent = 'Error refreshing'; status.style.color = '#dc3545'; }
-                if (navRefresh) navRefresh.style.animation = '';
-            } finally {
+                if (navRefreshSvg) navRefreshSvg.style.animation = '';
                 if (btn) btn.disabled = false;
             }
         }
