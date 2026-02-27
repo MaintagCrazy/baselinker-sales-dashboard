@@ -12,7 +12,11 @@ import time
 import asyncio
 import requests
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from collections import defaultdict
+
+# User is in Poland — all date filtering must use Polish timezone
+POLISH_TZ = ZoneInfo("Europe/Warsaw")
 from io import BytesIO
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -617,18 +621,27 @@ async def get_sales(
     if raw_orders is None:
         return JSONResponse(status_code=503, content={"error": "Raw order data not available. Please wait for refresh."})
 
-    # Parse date boundaries to unix timestamps (start of date_from, end of date_to)
+    # Parse date boundaries as Polish timezone (user is in Poland)
+    # "Today" = midnight-to-midnight in Europe/Warsaw, not UTC
     try:
-        ts_from = int(datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()) if date_from else 0
-        # date_to end of day = next day midnight - 1 second
-        ts_to = int((datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)).timestamp()) if date_to else int(time.time()) + 86400
+        if date_from:
+            dt_from = datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=POLISH_TZ)
+            ts_from = int(dt_from.timestamp())
+        else:
+            ts_from = 0
+        if date_to:
+            dt_to = datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=POLISH_TZ) + timedelta(days=1)
+            ts_to = int(dt_to.timestamp())
+        else:
+            ts_to = int(time.time()) + 86400
     except ValueError:
         return JSONResponse(status_code=400, content={"error": "Invalid date format. Use YYYY-MM-DD."})
 
-    # Filter orders by date_confirmed (or date_add as fallback)
+    # Filter orders by date_add (order creation time) — NOT date_confirmed
+    # date_add is the actual order date; date_confirmed can be days later
     filtered_orders = []
     for order in raw_orders:
-        order_ts = order.get("date_confirmed") or order.get("date_add", 0)
+        order_ts = order.get("date_add", 0)
         if isinstance(order_ts, (int, float)) and ts_from <= order_ts < ts_to:
             filtered_orders.append(order)
 
@@ -712,14 +725,22 @@ async def download_excel(
             return JSONResponse(status_code=503, content={"error": "Raw order data not available"})
 
         try:
-            ts_from = int(datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()) if date_from else 0
-            ts_to = int((datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)).timestamp()) if date_to else int(time.time()) + 86400
+            if date_from:
+                dt_from = datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=POLISH_TZ)
+                ts_from = int(dt_from.timestamp())
+            else:
+                ts_from = 0
+            if date_to:
+                dt_to = datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=POLISH_TZ) + timedelta(days=1)
+                ts_to = int(dt_to.timestamp())
+            else:
+                ts_to = int(time.time()) + 86400
         except ValueError:
             return JSONResponse(status_code=400, content={"error": "Invalid date format. Use YYYY-MM-DD."})
 
         filtered_orders = [
             o for o in raw_orders
-            if ts_from <= (o.get("date_confirmed") or o.get("date_add", 0)) < ts_to
+            if ts_from <= o.get("date_add", 0) < ts_to
         ]
         source_data = build_response(filtered_orders, inventory, po_items_map)
     else:
