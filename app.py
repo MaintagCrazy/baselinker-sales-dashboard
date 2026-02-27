@@ -524,26 +524,44 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
         # Get order currency for price conversion
         order_currency = (order.get('currency', '') or 'PLN').upper()
 
+        # Include delivery price in revenue (matches Marbily App logic)
+        delivery_price_original = float(order.get('delivery_price', 0) or 0)
+        delivery_price = convert_to_pln(delivery_price_original, order_currency)
+
+        # First pass: collect products and their base revenue for proportional delivery split
+        order_products = []
+        order_products_total = 0.0
         for product in order.get('products', []):
             bl_product_id = str(product.get('variant_id', ''))
             if not bl_product_id or bl_product_id == '0':
                 continue
-
             sku = product.get('sku', '') or ''
             name = product.get('name', '') or 'Unknown'
             qty = int(product.get('quantity', 1))
             price_original = float(product.get('price_brutto', 0))
             price = convert_to_pln(price_original, order_currency)
+            product_revenue = price * qty
+            order_products_total += product_revenue
+            order_products.append({
+                'bl_product_id': bl_product_id, 'sku': sku, 'name': name,
+                'qty': qty, 'price': price, 'product_revenue': product_revenue,
+            })
 
-            variant_key = sku if sku else bl_product_id
+        # Second pass: distribute delivery fee proportionally and accumulate
+        for p in order_products:
+            variant_key = p['sku'] if p['sku'] else p['bl_product_id']
+            # Proportional share of delivery cost
+            delivery_share = 0.0
+            if delivery_price > 0 and order_products_total > 0:
+                delivery_share = delivery_price * (p['product_revenue'] / order_products_total)
 
-            sales_by_variant[variant_key]['product_name'] = name
-            sales_by_variant[variant_key]['sku'] = sku
-            sales_by_variant[variant_key]['units_sold'] += qty
-            sales_by_variant[variant_key]['bl_product_id'] = bl_product_id
-            sales_by_variant[variant_key]['total_revenue'] += price * qty
-            sales_by_variant[variant_key]['sales_by_channel'][channel] += qty
-            sales_by_variant[variant_key]['_price_instances'].append({'price': price, 'qty': qty})
+            sales_by_variant[variant_key]['product_name'] = p['name']
+            sales_by_variant[variant_key]['sku'] = p['sku']
+            sales_by_variant[variant_key]['units_sold'] += p['qty']
+            sales_by_variant[variant_key]['bl_product_id'] = p['bl_product_id']
+            sales_by_variant[variant_key]['total_revenue'] += p['product_revenue'] + delivery_share
+            sales_by_variant[variant_key]['sales_by_channel'][channel] += p['qty']
+            sales_by_variant[variant_key]['_price_instances'].append({'price': p['price'], 'qty': p['qty']})
 
     # Post-process: detect and exclude outlier prices per variant
     result = {}
