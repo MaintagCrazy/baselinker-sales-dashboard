@@ -345,6 +345,10 @@ def fetch_purchase_orders() -> list:
         page += 1
         time.sleep(0.6)
 
+        # Stop if fewer than 100 results (last page)
+        if len(orders) < 100:
+            break
+
     return all_pos
 
 
@@ -465,17 +469,21 @@ def refresh_data():
 
             po_list.append(po_entry)
 
-        print(f"Fetched {len(po_list)} purchase orders")
+        print(f"Fetched {len(po_list)} purchase orders, {len(po_items_map)} unique product mappings")
 
         # Build final products list
         products = []
         total_revenue = 0.0
+        po_match_count = 0
 
         for variant_key, data in sales_data.items():
             bl_pid = data['bl_product_id']
             inv_info = inventory.get(bl_pid, {})
             revenue = round(data['total_revenue'], 2)
             total_revenue += revenue
+            product_pos = po_items_map.get(bl_pid, [])
+            if product_pos:
+                po_match_count += 1
 
             products.append({
                 'image_url': inv_info.get('image_url', ''),
@@ -488,10 +496,11 @@ def refresh_data():
                 'category': determine_category(data['product_name']),
                 'shopify_variant_id': inv_info.get('shopify_variant_id', ''),
                 'bl_product_id': bl_pid,
-                'purchase_orders': po_items_map.get(bl_pid, [])
+                'purchase_orders': product_pos
             })
 
         products.sort(key=lambda x: x['units_sold'], reverse=True)
+        print(f"Built {len(products)} products, {po_match_count} matched to POs")
 
         now = datetime.now(timezone.utc)
         cache["data"] = {
