@@ -101,19 +101,15 @@
         <div class="header-stats">
             <div class="stat-card">
                 <span class="stat-value" id="total-variants">--</span>
-                <span class="stat-label" id="label-products" data-i18n="products">Products</span>
+                <span class="stat-label" data-i18n="products">Products</span>
             </div>
             <div class="stat-card">
                 <span class="stat-value" id="total-units">--</span>
-                <span class="stat-label" id="label-units-sold" data-i18n="unitsSold">Units Sold</span>
+                <span class="stat-label" data-i18n="unitsSold">Units Sold</span>
             </div>
             <div class="stat-card">
                 <span class="stat-value" id="total-orders">--</span>
-                <span class="stat-label" id="label-orders" data-i18n="orders">Orders</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-value" id="total-revenue">--</span>
-                <span class="stat-label" id="label-revenue" data-i18n="totalRevenue">Total Revenue</span>
+                <span class="stat-label" data-i18n="orders">Orders</span>
             </div>
         </div>
     </div>
@@ -169,7 +165,6 @@
                 products: 'Products',
                 unitsSold: 'Units Sold',
                 orders: 'Orders',
-                totalRevenue: 'Total Revenue',
                 lastUpdated: 'Last updated',
                 nextRefresh: 'Next refresh in',
                 refreshNow: 'Refresh Now',
@@ -214,7 +209,6 @@
                 products: 'S\u1ea3n ph\u1ea9m',
                 unitsSold: 'S\u1ed1 l\u01b0\u1ee3ng \u0111\u00e3 b\u00e1n',
                 orders: '\u0110\u01a1n h\u00e0ng',
-                totalRevenue: 'T\u1ed5ng doanh thu',
                 lastUpdated: 'C\u1eadp nh\u1eadt l\u1ea7n cu\u1ed1i',
                 nextRefresh: 'L\u00e0m m\u1edbi sau',
                 refreshNow: 'L\u00e0m m\u1edbi ngay',
@@ -323,8 +317,6 @@
             document.getElementById('total-variants').textContent = salesData.total_variants;
             document.getElementById('total-units').textContent = salesData.total_units_sold.toLocaleString();
             document.getElementById('total-orders').textContent = salesData.total_orders.toLocaleString();
-            const rev = salesData.total_revenue || 0;
-            document.getElementById('total-revenue').textContent = rev.toLocaleString('pl-PL', {minimumFractionDigits: 0, maximumFractionDigits: 0}) + ' PLN';
             document.getElementById('last-updated').textContent = new Date(salesData.last_updated).toLocaleTimeString();
         }
 
@@ -397,7 +389,6 @@
             // Search
             const searchVal = document.getElementById('filter-search').value.trim();
             if (searchVal) {
-                // Check if it's a Shopify URL with variant ID
                 const variantMatch = searchVal.match(/[?&]variant=(\d+)/);
                 if (variantMatch) {
                     const vid = variantMatch[1];
@@ -621,7 +612,15 @@
         }
 
         function downloadExcel() {
-            window.location.href = '/api/download';
+            const params = new URLSearchParams();
+            const cat = document.getElementById('filter-category').value;
+            const po = document.getElementById('filter-po').value;
+            const search = document.getElementById('filter-search').value.trim();
+            if (cat) params.set('category', cat);
+            if (po) params.set('po', po);
+            if (search) params.set('search', search);
+            const qs = params.toString();
+            window.location.href = '/api/download' + (qs ? '?' + qs : '');
         }
 
         // ========== INIT ==========

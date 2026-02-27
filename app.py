@@ -6,6 +6,7 @@ Enhanced: category detection, purchase orders, revenue tracking, sales channels
 """
 
 import os
+import re
 import json
 import time
 import asyncio
@@ -16,7 +17,7 @@ from io import BytesIO
 from typing import Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Response, BackgroundTasks
+from fastapi import FastAPI, Response, BackgroundTasks, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 
@@ -319,7 +320,7 @@ def get_inventory(product_ids: list) -> dict:
 
 
 def fetch_purchase_orders() -> list:
-    """Fetch all purchase orders from BaseLinker"""
+    """Fetch all purchase orders from BaseLinker warehouse control"""
     all_pos = []
     date_from = 1704067200  # Jan 1, 2024
     date_to = int(time.time())
@@ -327,7 +328,6 @@ def fetch_purchase_orders() -> list:
 
     while True:
         result = call_baselinker('getInventoryPurchaseOrders', {
-            'inventory_id': BASELINKER_INVENTORY_ID,
             'date_from': date_from,
             'date_to': date_to,
             'page': page
@@ -337,7 +337,7 @@ def fetch_purchase_orders() -> list:
             print(f"PO fetch error: {result.get('error')}")
             break
 
-        orders = result.get('orders', [])
+        orders = result.get('purchase_orders', [])
         if not orders:
             break
 
@@ -349,14 +349,63 @@ def fetch_purchase_orders() -> list:
 
 
 def fetch_purchase_order_items(order_id: int) -> list:
-    """Fetch items for a specific purchase order"""
-    result = call_baselinker('getInventoryPurchaseOrderItems', {
-        'purchase_order_id': order_id
-    })
+    """Fetch items for a specific purchase order (paginated, 100 per page)"""
+    all_items = []
+    page = 0
 
-    if "error" not in result:
-        return result.get('items', [])
-    return []
+    while True:
+        params = {'order_id': order_id}
+        if page > 0:
+            params['page'] = page
+
+        result = call_baselinker('getInventoryPurchaseOrderItems', params)
+
+        if "error" in result:
+            break
+
+        items = result.get('items', [])
+        if not items:
+            break
+
+        all_items.extend(items)
+        page += 1
+
+        if len(items) < 100:
+            break
+
+        time.sleep(0.3)
+
+    return all_items
+
+
+def filter_products(products: list, category: str = "", po: str = "", search: str = "") -> list:
+    """Apply filters to product list (shared between API and Excel download)"""
+    filtered = products
+
+    if category:
+        filtered = [p for p in filtered if p.get('category') == category]
+
+    if po:
+        po_data = next((p for p in cache.get("purchase_orders", []) if str(p.get('po_id')) == po), None)
+        if po_data and po_data.get('product_ids'):
+            pid_set = set(str(pid) for pid in po_data['product_ids'])
+            filtered = [p for p in filtered if str(p.get('bl_product_id')) in pid_set]
+
+    if search:
+        variant_match = re.search(r'[?&]variant=(\d+)', search)
+        if variant_match:
+            vid = variant_match.group(1)
+            filtered = [p for p in filtered if p.get('shopify_variant_id') == vid]
+        else:
+            q = search.lower()
+            filtered = [p for p in filtered if
+                q in (p.get('product_name', '') or '').lower() or
+                q in (p.get('sku', '') or '').lower() or
+                q in (p.get('bl_product_id', '') or '') or
+                q in (p.get('category', '') or '').lower()
+            ]
+
+    return filtered
 
 
 def refresh_data():
@@ -380,7 +429,7 @@ def refresh_data():
         po_list = []
 
         for po in pos:
-            po_id = po.get('purchase_order_id') or po.get('order_id')
+            po_id = po.get('id')
             if not po_id:
                 continue
 
@@ -391,15 +440,17 @@ def refresh_data():
             po_entry = {
                 'po_id': po_id,
                 'document_number': doc_number,
-                'status': po.get('status', ''),
-                'date': po.get('date_add', ''),
-                'items_count': len(items),
+                'status': po.get('status', 0),
+                'date': po.get('date_created', ''),
+                'items_count': po.get('items_count', len(items)),
+                'total_quantity': po.get('total_quantity', 0),
+                'total_cost': str(po.get('total_cost', '0')),
                 'product_ids': []
             }
 
             for item in items:
                 pid = str(item.get('product_id', ''))
-                if pid:
+                if pid and pid != '0':
                     po_entry['product_ids'].append(pid)
                     if pid not in po_items_map:
                         po_items_map[pid] = []
@@ -407,7 +458,9 @@ def refresh_data():
                         'po_id': po_id,
                         'document_number': doc_number,
                         'quantity_ordered': item.get('quantity', 0),
-                        'item_cost': float(item.get('price', 0))
+                        'completed_quantity': item.get('completed_quantity', 0),
+                        'item_cost': float(item.get('item_cost', 0)),
+                        'product_sku': item.get('product_sku', '')
                     })
 
             po_list.append(po_entry)
@@ -570,9 +623,16 @@ async def get_activity():
 
 
 @app.get("/api/download")
-async def download_excel():
+async def download_excel(
+    category: str = Query("", description="Filter by category"),
+    po: str = Query("", description="Filter by purchase order ID"),
+    search: str = Query("", description="Search text or Shopify URL")
+):
     if cache["data"] is None:
         return JSONResponse(status_code=503, content={"error": "Data not loaded yet"})
+
+    # Apply same filters as frontend
+    products = filter_products(cache["data"]["products"], category, po, search)
 
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -590,8 +650,20 @@ async def download_excel():
     ws['A1'] = "BASELINKER SALES REPORT - WYSLANE ORDERS"
     ws['A1'].font = Font(bold=True, size=14)
 
+    # Show active filters in subtitle
+    filter_parts = []
+    if category:
+        filter_parts.append(f"Category: {category}")
+    if po:
+        po_data = next((p for p in cache.get('purchase_orders', []) if str(p.get('po_id')) == po), None)
+        if po_data:
+            filter_parts.append(f"PO: {po_data.get('document_number', po)}")
+    if search:
+        filter_parts.append(f"Search: {search}")
+    filter_text = f" | Filters: {', '.join(filter_parts)}" if filter_parts else ""
+
     ws.merge_cells('A2:G2')
-    ws['A2'] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    ws['A2'] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}{filter_text}"
 
     headers = [
         ("Product Name", 50), ("SKU", 25), ("Category", 18),
@@ -606,7 +678,7 @@ async def download_excel():
         cell.border = thin_border
         ws.column_dimensions[get_column_letter(col)].width = width
 
-    for row_idx, product in enumerate(cache["data"]["products"], 5):
+    for row_idx, product in enumerate(products, 5):
         ws.cell(row=row_idx, column=1, value=product['product_name'][:80]).border = thin_border
         ws.cell(row=row_idx, column=2, value=product['sku']).border = thin_border
         ws.cell(row=row_idx, column=3, value=product.get('category', 'Other')).border = thin_border
@@ -626,10 +698,10 @@ async def download_excel():
             stock_cell.font = Font(color="FF6600")
         ws.cell(row=row_idx, column=7, value=product.get('image_url', '') or '').border = thin_border
 
-    summary_row = len(cache["data"]["products"]) + 5
-    ws.cell(row=summary_row, column=1, value=f"TOTAL: {cache['data']['total_variants']} variants").font = Font(bold=True)
-    ws.cell(row=summary_row, column=4, value=cache['data']['total_units_sold']).font = Font(bold=True)
-    ws.cell(row=summary_row, column=5, value=round(cache['data'].get('total_revenue', 0), 2)).font = Font(bold=True)
+    summary_row = len(products) + 5
+    ws.cell(row=summary_row, column=1, value=f"TOTAL: {len(products)} variants").font = Font(bold=True)
+    ws.cell(row=summary_row, column=4, value=sum(p['units_sold'] for p in products)).font = Font(bold=True)
+    ws.cell(row=summary_row, column=5, value=round(sum(p.get('total_revenue', 0) for p in products), 2)).font = Font(bold=True)
 
     output = BytesIO()
     wb.save(output)
