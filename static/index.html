@@ -4,15 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BaseLinker Sales Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #333; min-height: 100vh; }
         .header { background: linear-gradient(135deg, #4472C4 0%, #2c5aa0 100%); color: white; padding: 20px 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .header h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
-        .header-stats { display: flex; gap: 30px; font-size: 14px; opacity: 0.9; }
-        .header-stats span { display: flex; align-items: center; gap: 5px; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .lang-toggle { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 20px; cursor: pointer; user-select: none; font-size: 13px; font-weight: 500; }
+        .lang-toggle:hover { background: rgba(255,255,255,0.25); }
+        .lang-toggle .active-lang { background: white; color: #2c5aa0; padding: 2px 8px; border-radius: 10px; font-weight: 700; }
+        .lang-toggle .inactive-lang { opacity: 0.7; padding: 2px 8px; }
+        .header-stats { display: flex; gap: 20px; font-size: 14px; opacity: 0.9; flex-wrap: wrap; }
+        .stat-card { background: rgba(255,255,255,0.12); padding: 8px 16px; border-radius: 8px; display: flex; flex-direction: column; gap: 2px; }
+        .stat-card .stat-value { font-size: 20px; font-weight: 700; }
+        .stat-card .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; }
         .controls { background: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; flex-wrap: wrap; gap: 10px; }
-        .refresh-info { display: flex; align-items: center; gap: 15px; font-size: 13px; color: #666; }
+        .refresh-info { display: flex; align-items: center; gap: 15px; font-size: 13px; color: #666; flex-wrap: wrap; }
         .countdown { font-weight: 600; color: #4472C4; }
         .buttons { display: flex; gap: 10px; }
         .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
@@ -21,6 +29,12 @@
         .btn-secondary { background: #28a745; color: white; }
         .btn-secondary:hover { background: #218838; }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .filter-bar { background: white; padding: 12px 30px; border-bottom: 1px solid #e0e0e0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .filter-bar select, .filter-bar input { padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 13px; background: white; min-width: 180px; }
+        .filter-bar select:focus, .filter-bar input:focus { outline: none; border-color: #4472C4; box-shadow: 0 0 0 2px rgba(68,114,196,0.15); }
+        .filter-bar input { min-width: 280px; }
+        .filter-bar label { font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.3px; }
+        .filter-group { display: flex; flex-direction: column; gap: 4px; }
         .container { padding: 20px 30px; }
         .loading { text-align: center; padding: 60px; color: #666; }
         .spinner { width: 40px; height: 40px; border: 4px solid #e0e0e0; border-top-color: #4472C4; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
@@ -32,81 +46,285 @@
         th.sorted-asc::after { content: ' \25B2'; font-size: 10px; }
         th.sorted-desc::after { content: ' \25BC'; font-size: 10px; }
         td { padding: 12px 16px; border-bottom: 1px solid #eee; font-size: 14px; vertical-align: middle; }
-        tr:hover { background: #f8f9fa; }
+        tr.product-row { cursor: pointer; transition: background 0.15s; }
+        tr.product-row:hover { background: #f0f4ff; }
+        tr.product-row.expanded { background: #e8eefa; }
         .product-image { width: 50px; height: 50px; object-fit: cover; border-radius: 6px; background: #f0f0f0; }
         .no-image { width: 50px; height: 50px; background: #f0f0f0; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px; }
-        .product-name { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .product-name { max-width: 350px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .sku { font-family: monospace; font-size: 13px; color: #555; }
+        .category-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #e8eefa; color: #4472C4; white-space: nowrap; }
         .units-sold { font-weight: 600; color: #333; text-align: center; }
         .stock { text-align: center; font-weight: 500; }
         .stock-zero { color: #dc3545; font-weight: 700; }
         .stock-low { color: #fd7e14; font-weight: 600; }
         .stock-ok { color: #28a745; }
+        .detail-row td { padding: 0; border-bottom: 2px solid #4472C4; }
+        .detail-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px 24px; background: #f8fafc; }
+        .detail-section { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .detail-section h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #666; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
+        .detail-stat { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+        .detail-stat .label { color: #666; }
+        .detail-stat .value { font-weight: 600; color: #333; }
+        .chart-container { width: 100%; max-width: 220px; margin: 0 auto; }
+        .po-list { list-style: none; }
+        .po-list li { padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; display: flex; justify-content: space-between; }
+        .po-list li:last-child { border-bottom: none; }
+        .po-doc { font-weight: 600; color: #4472C4; }
+        .stock-bar { height: 8px; border-radius: 4px; background: #e9ecef; margin-top: 8px; overflow: hidden; }
+        .stock-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
         .summary { background: #f8f9fa; padding: 15px 20px; font-size: 14px; color: #666; border-top: 2px solid #e0e0e0; }
         .summary strong { color: #333; }
         .error { background: #fff5f5; border: 1px solid #ffcccc; color: #c00; padding: 20px; border-radius: 8px; text-align: center; }
-        @media (max-width: 768px) { .header-stats { flex-wrap: wrap; gap: 10px; } .controls { flex-direction: column; align-items: stretch; } .buttons { justify-content: center; } .product-name { max-width: 200px; } td, th { padding: 10px 12px; } }
+        @media (max-width: 768px) {
+            .header-stats { gap: 10px; }
+            .controls { flex-direction: column; align-items: stretch; }
+            .buttons { justify-content: center; }
+            .filter-bar { flex-direction: column; }
+            .filter-bar select, .filter-bar input { min-width: 100%; }
+            .product-name { max-width: 200px; }
+            td, th { padding: 10px 12px; }
+            .detail-panel { grid-template-columns: 1fr; }
+            .header-top { flex-direction: column; gap: 10px; align-items: flex-start; }
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>BaseLinker Sales Dashboard</h1>
+        <div class="header-top">
+            <h1 id="dashboard-title">BaseLinker Sales Dashboard</h1>
+            <div class="lang-toggle" id="lang-toggle" onclick="toggleLanguage()">
+                <span id="lang-en" class="active-lang">EN</span>
+                <span id="lang-vi" class="inactive-lang">VI</span>
+            </div>
+        </div>
         <div class="header-stats">
-            <span id="total-variants">Loading...</span>
-            <span id="total-units">Loading...</span>
-            <span id="total-orders">Loading...</span>
+            <div class="stat-card">
+                <span class="stat-value" id="total-variants">--</span>
+                <span class="stat-label" id="label-products" data-i18n="products">Products</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="total-units">--</span>
+                <span class="stat-label" id="label-units-sold" data-i18n="unitsSold">Units Sold</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="total-orders">--</span>
+                <span class="stat-label" id="label-orders" data-i18n="orders">Orders</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="total-revenue">--</span>
+                <span class="stat-label" id="label-revenue" data-i18n="totalRevenue">Total Revenue</span>
+            </div>
         </div>
     </div>
     <div class="controls">
         <div class="refresh-info">
-            <span>Last updated: <strong id="last-updated">--</strong></span>
-            <span>Next refresh in: <strong class="countdown" id="countdown">--:--</strong></span>
+            <span><span data-i18n="lastUpdated">Last updated</span>: <strong id="last-updated">--</strong></span>
+            <span><span data-i18n="nextRefresh">Next refresh in</span>: <strong class="countdown" id="countdown">--:--</strong></span>
             <span id="refresh-status"></span>
         </div>
         <div class="buttons">
             <button class="btn btn-primary" id="refresh-btn" onclick="forceRefresh()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                Refresh Now
+                <span data-i18n="refreshNow">Refresh Now</span>
             </button>
             <button class="btn btn-secondary" onclick="downloadExcel()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                Download Excel
+                <span data-i18n="downloadExcel">Download Excel</span>
             </button>
+        </div>
+    </div>
+    <div class="filter-bar" id="filter-bar">
+        <div class="filter-group">
+            <label data-i18n="categoryLabel">Category</label>
+            <select id="filter-category" onchange="applyFilters()">
+                <option value="" data-i18n="allCategories">All Categories</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label data-i18n="purchaseOrderLabel">Purchase Order</label>
+            <select id="filter-po" onchange="applyFilters()">
+                <option value="" data-i18n="allPOs">All Purchase Orders</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label data-i18n="searchLabel">Search</label>
+            <input type="text" id="filter-search" placeholder="Search by name, SKU, or paste Shopify URL..." oninput="applyFilters()">
         </div>
     </div>
     <div class="container">
         <div id="content">
             <div class="loading">
                 <div class="spinner"></div>
-                <p>Loading sales data...</p>
+                <p data-i18n="loadingData">Loading sales data...</p>
             </div>
         </div>
     </div>
+
     <script>
+        // ========== I18N ==========
+        const translations = {
+            en: {
+                dashboardTitle: 'BaseLinker Sales Dashboard',
+                products: 'Products',
+                unitsSold: 'Units Sold',
+                orders: 'Orders',
+                totalRevenue: 'Total Revenue',
+                lastUpdated: 'Last updated',
+                nextRefresh: 'Next refresh in',
+                refreshNow: 'Refresh Now',
+                downloadExcel: 'Download Excel',
+                categoryLabel: 'Category',
+                purchaseOrderLabel: 'Purchase Order',
+                searchLabel: 'Search',
+                allCategories: 'All Categories',
+                allPOs: 'All Purchase Orders',
+                searchPlaceholder: 'Search by name, SKU, or paste Shopify URL...',
+                colImage: 'Image',
+                colName: 'Product Name',
+                colSku: 'SKU',
+                colCategory: 'Category',
+                colUnitsSold: 'Units Sold',
+                colStock: 'Stock',
+                showing: 'Showing',
+                of: 'of',
+                productsSuffix: 'products',
+                totalUnitsSold: 'Total units sold',
+                outOfStock: 'Out of stock',
+                salesStats: 'Sales Statistics',
+                totalUnitsSoldDetail: 'Total Units Sold',
+                totalRevenueDetail: 'Total Revenue',
+                avgPricePerUnit: 'Avg Price per Unit',
+                salesChannels: 'Sales Channels',
+                noChannelData: 'No channel data',
+                purchaseOrderHistory: 'Purchase Order History',
+                noPOs: 'No purchase orders found',
+                qtyOrdered: 'qty ordered',
+                costPerUnit: 'cost/unit',
+                stockLevel: 'Stock Level',
+                currentStock: 'Current Stock',
+                units: 'units',
+                loadingData: 'Loading sales data...',
+                noData: 'No data available',
+                errorLoading: 'Error loading data',
+                tryRefresh: 'Please try refreshing the page.'
+            },
+            vi: {
+                dashboardTitle: 'B\u1ea3ng \u0111i\u1ec1u khi\u1ec3n BaseLinker',
+                products: 'S\u1ea3n ph\u1ea9m',
+                unitsSold: 'S\u1ed1 l\u01b0\u1ee3ng \u0111\u00e3 b\u00e1n',
+                orders: '\u0110\u01a1n h\u00e0ng',
+                totalRevenue: 'T\u1ed5ng doanh thu',
+                lastUpdated: 'C\u1eadp nh\u1eadt l\u1ea7n cu\u1ed1i',
+                nextRefresh: 'L\u00e0m m\u1edbi sau',
+                refreshNow: 'L\u00e0m m\u1edbi ngay',
+                downloadExcel: 'T\u1ea3i Excel',
+                categoryLabel: 'Danh m\u1ee5c',
+                purchaseOrderLabel: '\u0110\u01a1n mua h\u00e0ng',
+                searchLabel: 'T\u00ecm ki\u1ebfm',
+                allCategories: 'T\u1ea5t c\u1ea3 danh m\u1ee5c',
+                allPOs: 'T\u1ea5t c\u1ea3 \u0111\u01a1n mua',
+                searchPlaceholder: 'T\u00ecm theo t\u00ean, SKU, ho\u1eb7c d\u00e1n URL Shopify...',
+                colImage: 'H\u00ecnh \u1ea3nh',
+                colName: 'T\u00ean s\u1ea3n ph\u1ea9m',
+                colSku: 'SKU',
+                colCategory: 'Danh m\u1ee5c',
+                colUnitsSold: '\u0110\u00e3 b\u00e1n',
+                colStock: 'T\u1ed3n kho',
+                showing: 'Hi\u1ec3n th\u1ecb',
+                of: 'tr\u00ean',
+                productsSuffix: 's\u1ea3n ph\u1ea9m',
+                totalUnitsSold: 'T\u1ed5ng \u0111\u00e3 b\u00e1n',
+                outOfStock: 'H\u1ebft h\u00e0ng',
+                salesStats: 'Th\u1ed1ng k\u00ea b\u00e1n h\u00e0ng',
+                totalUnitsSoldDetail: 'T\u1ed5ng s\u1ed1 l\u01b0\u1ee3ng b\u00e1n',
+                totalRevenueDetail: 'T\u1ed5ng doanh thu',
+                avgPricePerUnit: 'Gi\u00e1 trung b\u00ecnh/\u0111\u01a1n v\u1ecb',
+                salesChannels: 'K\u00eanh b\u00e1n h\u00e0ng',
+                noChannelData: 'Kh\u00f4ng c\u00f3 d\u1eef li\u1ec7u k\u00eanh',
+                purchaseOrderHistory: 'L\u1ecbch s\u1eed \u0111\u01a1n mua',
+                noPOs: 'Kh\u00f4ng t\u00ecm th\u1ea5y \u0111\u01a1n mua',
+                qtyOrdered: 's\u1ed1 l\u01b0\u1ee3ng \u0111\u1eb7t',
+                costPerUnit: 'gi\u00e1/\u0111v',
+                stockLevel: 'M\u1ee9c t\u1ed3n kho',
+                currentStock: 'T\u1ed3n kho hi\u1ec7n t\u1ea1i',
+                units: '\u0111\u01a1n v\u1ecb',
+                loadingData: '\u0110ang t\u1ea3i d\u1eef li\u1ec7u...',
+                noData: 'Kh\u00f4ng c\u00f3 d\u1eef li\u1ec7u',
+                errorLoading: 'L\u1ed7i t\u1ea3i d\u1eef li\u1ec7u',
+                tryRefresh: 'Vui l\u00f2ng t\u1ea3i l\u1ea1i trang.'
+            }
+        };
+
+        let currentLang = localStorage.getItem('dashboard_lang') || 'en';
+
+        function t(key) {
+            return (translations[currentLang] && translations[currentLang][key]) || translations.en[key] || key;
+        }
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'en' ? 'vi' : 'en';
+            localStorage.setItem('dashboard_lang', currentLang);
+            applyLanguage();
+            if (salesData) { renderData(); updateHeader(); }
+        }
+
+        function applyLanguage() {
+            const enEl = document.getElementById('lang-en');
+            const viEl = document.getElementById('lang-vi');
+            if (currentLang === 'en') {
+                enEl.className = 'active-lang'; viEl.className = 'inactive-lang';
+            } else {
+                enEl.className = 'inactive-lang'; viEl.className = 'active-lang';
+            }
+            document.getElementById('dashboard-title').textContent = t('dashboardTitle');
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (el.tagName === 'OPTION') { el.textContent = t(key); }
+                else if (el.tagName === 'INPUT') { /* skip */ }
+                else { el.textContent = t(key); }
+            });
+            const searchInput = document.getElementById('filter-search');
+            if (searchInput) searchInput.placeholder = t('searchPlaceholder');
+        }
+
+        // ========== DATA ==========
         let salesData = null;
+        let purchaseOrders = [];
         let sortColumn = 'units_sold';
         let sortDirection = 'desc';
         let countdownInterval = null;
         let nextRefreshTime = null;
+        let expandedRowKey = null;
+        let chartInstance = null;
 
         async function fetchSalesData() {
             try {
-                const response = await fetch('/api/sales');
-                if (!response.ok) throw new Error('Failed to fetch data');
-                salesData = await response.json();
+                const [salesResp, poResp] = await Promise.all([
+                    fetch('/api/sales'),
+                    fetch('/api/purchase-orders')
+                ]);
+                if (!salesResp.ok) throw new Error('Failed to fetch data');
+                salesData = await salesResp.json();
+                const poData = await poResp.json();
+                purchaseOrders = poData.purchase_orders || [];
+                populateFilters();
                 renderData();
                 updateHeader();
                 startCountdown();
+                applyLanguage();
             } catch (error) {
-                document.getElementById('content').innerHTML = `<div class="error"><p>Error loading data: ${error.message}</p><p>Please try refreshing the page.</p></div>`;
+                document.getElementById('content').innerHTML = `<div class="error"><p>${t('errorLoading')}: ${error.message}</p><p>${t('tryRefresh')}</p></div>`;
             }
         }
 
         function updateHeader() {
             if (!salesData) return;
-            document.getElementById('total-variants').textContent = `${salesData.total_variants} Products`;
-            document.getElementById('total-units').textContent = `${salesData.total_units_sold} Units Sold`;
-            document.getElementById('total-orders').textContent = `${salesData.total_orders} Orders`;
+            document.getElementById('total-variants').textContent = salesData.total_variants;
+            document.getElementById('total-units').textContent = salesData.total_units_sold.toLocaleString();
+            document.getElementById('total-orders').textContent = salesData.total_orders.toLocaleString();
+            const rev = salesData.total_revenue || 0;
+            document.getElementById('total-revenue').textContent = rev.toLocaleString('pl-PL', {minimumFractionDigits: 0, maximumFractionDigits: 0}) + ' PLN';
             document.getElementById('last-updated').textContent = new Date(salesData.last_updated).toLocaleTimeString();
         }
 
@@ -123,65 +341,244 @@
             }, 1000);
         }
 
+        // ========== FILTERS ==========
+        function populateFilters() {
+            if (!salesData || !salesData.products) return;
+            // Category filter
+            const catSelect = document.getElementById('filter-category');
+            const currentCat = catSelect.value;
+            const categories = {};
+            salesData.products.forEach(p => {
+                const cat = p.category || 'Other';
+                categories[cat] = (categories[cat] || 0) + 1;
+            });
+            catSelect.innerHTML = `<option value="" data-i18n="allCategories">${t('allCategories')}</option>`;
+            Object.keys(categories).sort().forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = `${cat} (${categories[cat]})`;
+                catSelect.appendChild(opt);
+            });
+            catSelect.value = currentCat;
+
+            // PO filter
+            const poSelect = document.getElementById('filter-po');
+            const currentPO = poSelect.value;
+            poSelect.innerHTML = `<option value="" data-i18n="allPOs">${t('allPOs')}</option>`;
+            purchaseOrders.forEach(po => {
+                const opt = document.createElement('option');
+                opt.value = String(po.po_id);
+                opt.textContent = `${po.document_number} (${po.items_count} items)`;
+                poSelect.appendChild(opt);
+            });
+            poSelect.value = currentPO;
+        }
+
+        function getFilteredProducts() {
+            if (!salesData || !salesData.products) return [];
+            let products = salesData.products;
+
+            // Category filter
+            const catFilter = document.getElementById('filter-category').value;
+            if (catFilter) {
+                products = products.filter(p => p.category === catFilter);
+            }
+
+            // PO filter
+            const poFilter = document.getElementById('filter-po').value;
+            if (poFilter) {
+                const po = purchaseOrders.find(p => String(p.po_id) === poFilter);
+                if (po && po.product_ids) {
+                    const pidSet = new Set(po.product_ids.map(String));
+                    products = products.filter(p => pidSet.has(String(p.bl_product_id)));
+                }
+            }
+
+            // Search
+            const searchVal = document.getElementById('filter-search').value.trim();
+            if (searchVal) {
+                // Check if it's a Shopify URL with variant ID
+                const variantMatch = searchVal.match(/[?&]variant=(\d+)/);
+                if (variantMatch) {
+                    const vid = variantMatch[1];
+                    products = products.filter(p => p.shopify_variant_id === vid);
+                } else {
+                    const q = searchVal.toLowerCase();
+                    products = products.filter(p =>
+                        (p.product_name || '').toLowerCase().includes(q) ||
+                        (p.sku || '').toLowerCase().includes(q) ||
+                        (p.bl_product_id || '').includes(q) ||
+                        (p.category || '').toLowerCase().includes(q)
+                    );
+                }
+            }
+
+            return products;
+        }
+
+        function applyFilters() {
+            expandedRowKey = null;
+            if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+            renderData();
+        }
+
+        // ========== RENDER ==========
         function renderData() {
             if (!salesData || !salesData.products) {
-                document.getElementById('content').innerHTML = '<div class="loading">No data available</div>';
+                document.getElementById('content').innerHTML = `<div class="loading">${t('noData')}</div>`;
                 return;
             }
 
-            const products = [...salesData.products].sort((a, b) => {
+            const allProducts = getFilteredProducts();
+            const products = [...allProducts].sort((a, b) => {
                 let aVal = a[sortColumn];
                 let bVal = b[sortColumn];
-                if (typeof aVal === 'string') {
-                    aVal = aVal.toLowerCase();
-                    bVal = bVal.toLowerCase();
-                }
-                if (sortDirection === 'asc') {
-                    return aVal > bVal ? 1 : -1;
-                } else {
-                    return aVal < bVal ? 1 : -1;
-                }
+                if (typeof aVal === 'string') { aVal = aVal.toLowerCase(); bVal = (bVal || '').toLowerCase(); }
+                if (sortDirection === 'asc') return aVal > bVal ? 1 : -1;
+                return aVal < bVal ? 1 : -1;
             });
 
-            const rows = products.map(p => {
+            let rows = '';
+            products.forEach((p, idx) => {
                 const stockClass = p.current_stock === 0 ? 'stock-zero' : p.current_stock < 5 ? 'stock-low' : 'stock-ok';
-                const imageHtml = p.image_url 
-                    ? `<img src="${p.image_url}" class="product-image" alt="${p.sku}" onerror="this.outerHTML='<div class=\\'no-image\\'>No img</div>'">`
+                const imageHtml = p.image_url
+                    ? `<img src="${p.image_url}" class="product-image" alt="${escapeHtml(p.sku)}" onerror="this.outerHTML='<div class=\\&quot;no-image\\&quot;>No img</div>'">`
                     : '<div class="no-image">No img</div>';
-                return `<tr>
+                const rowKey = p.sku || p.bl_product_id;
+                const isExpanded = expandedRowKey === rowKey;
+
+                rows += `<tr class="product-row${isExpanded ? ' expanded' : ''}" onclick="toggleDetail('${escapeHtml(rowKey)}', ${idx})">
                     <td>${imageHtml}</td>
                     <td class="product-name" title="${escapeHtml(p.product_name)}">${escapeHtml(p.product_name)}</td>
                     <td class="sku">${escapeHtml(p.sku || '-')}</td>
+                    <td><span class="category-badge">${escapeHtml(p.category || 'Other')}</span></td>
                     <td class="units-sold">${p.units_sold}</td>
                     <td class="stock ${stockClass}">${p.current_stock}</td>
                 </tr>`;
-            }).join('');
+
+                if (isExpanded) {
+                    rows += buildDetailRow(p);
+                }
+            });
 
             const getHeaderClass = (col) => {
                 if (sortColumn !== col) return '';
                 return sortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc';
             };
 
+            const totalFiltered = allProducts.length;
+            const totalAll = salesData.products.length;
+            const filteredUnits = allProducts.reduce((s, p) => s + p.units_sold, 0);
+            const oos = allProducts.filter(p => p.current_stock === 0).length;
+
             document.getElementById('content').innerHTML = `
                 <div class="table-wrapper">
                     <table>
                         <thead>
                             <tr>
-                                <th style="width:70px">Image</th>
-                                <th onclick="sortBy('product_name')" class="${getHeaderClass('product_name')}">Product Name</th>
-                                <th onclick="sortBy('sku')" class="${getHeaderClass('sku')}">SKU</th>
-                                <th onclick="sortBy('units_sold')" class="${getHeaderClass('units_sold')}">Units Sold</th>
-                                <th onclick="sortBy('current_stock')" class="${getHeaderClass('current_stock')}">Stock</th>
+                                <th style="width:70px">${t('colImage')}</th>
+                                <th onclick="sortBy('product_name')" class="${getHeaderClass('product_name')}">${t('colName')}</th>
+                                <th onclick="sortBy('sku')" class="${getHeaderClass('sku')}">${t('colSku')}</th>
+                                <th onclick="sortBy('category')" class="${getHeaderClass('category')}">${t('colCategory')}</th>
+                                <th onclick="sortBy('units_sold')" class="${getHeaderClass('units_sold')}">${t('colUnitsSold')}</th>
+                                <th onclick="sortBy('current_stock')" class="${getHeaderClass('current_stock')}">${t('colStock')}</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
                     </table>
                     <div class="summary">
-                        Showing <strong>${products.length}</strong> products | 
-                        Total units sold: <strong>${salesData.total_units_sold}</strong> | 
-                        Out of stock: <strong>${products.filter(p => p.current_stock === 0).length}</strong>
+                        ${t('showing')} <strong>${totalFiltered}</strong> ${t('of')} <strong>${totalAll}</strong> ${t('productsSuffix')} |
+                        ${t('totalUnitsSold')}: <strong>${filteredUnits.toLocaleString()}</strong> |
+                        ${t('outOfStock')}: <strong>${oos}</strong>
                     </div>
                 </div>`;
+
+            // Re-create chart if detail is open
+            if (expandedRowKey) {
+                const p = products.find(x => (x.sku || x.bl_product_id) === expandedRowKey);
+                if (p) createChannelChart(p);
+            }
+        }
+
+        function buildDetailRow(p) {
+            const avgPrice = p.units_sold > 0 ? (p.total_revenue / p.units_sold).toFixed(2) : '0.00';
+            const channelEntries = Object.entries(p.sales_by_channel || {});
+            const channelHtml = channelEntries.length > 0
+                ? `<div class="chart-container"><canvas id="channel-chart"></canvas></div>`
+                : `<p style="color:#999;font-size:13px">${t('noChannelData')}</p>`;
+
+            const poHtml = (p.purchase_orders && p.purchase_orders.length > 0)
+                ? `<ul class="po-list">${p.purchase_orders.map(po =>
+                    `<li><span class="po-doc">${escapeHtml(po.document_number)}</span><span>${po.quantity_ordered} ${t('qtyOrdered')} &middot; ${po.item_cost.toFixed(2)} PLN ${t('costPerUnit')}</span></li>`
+                  ).join('')}</ul>`
+                : `<p style="color:#999;font-size:13px">${t('noPOs')}</p>`;
+
+            const stockMax = Math.max(p.current_stock, 50);
+            const stockPct = Math.min(100, (p.current_stock / stockMax) * 100);
+            const stockColor = p.current_stock === 0 ? '#dc3545' : p.current_stock < 5 ? '#fd7e14' : '#28a745';
+
+            return `<tr class="detail-row"><td colspan="6">
+                <div class="detail-panel">
+                    <div class="detail-section">
+                        <h4>${t('salesStats')}</h4>
+                        <div class="detail-stat"><span class="label">${t('totalUnitsSoldDetail')}</span><span class="value">${p.units_sold}</span></div>
+                        <div class="detail-stat"><span class="label">${t('totalRevenueDetail')}</span><span class="value">${p.total_revenue.toLocaleString('pl-PL', {minimumFractionDigits: 2})} PLN</span></div>
+                        <div class="detail-stat"><span class="label">${t('avgPricePerUnit')}</span><span class="value">${parseFloat(avgPrice).toLocaleString('pl-PL', {minimumFractionDigits: 2})} PLN</span></div>
+                    </div>
+                    <div class="detail-section">
+                        <h4>${t('salesChannels')}</h4>
+                        ${channelHtml}
+                    </div>
+                    <div class="detail-section">
+                        <h4>${t('purchaseOrderHistory')}</h4>
+                        ${poHtml}
+                    </div>
+                    <div class="detail-section">
+                        <h4>${t('stockLevel')}</h4>
+                        <div class="detail-stat"><span class="label">${t('currentStock')}</span><span class="value">${p.current_stock} ${t('units')}</span></div>
+                        <div class="stock-bar"><div class="stock-bar-fill" style="width:${stockPct}%;background:${stockColor}"></div></div>
+                    </div>
+                </div>
+            </td></tr>`;
+        }
+
+        function createChannelChart(p) {
+            const canvas = document.getElementById('channel-chart');
+            if (!canvas) return;
+            if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+
+            const entries = Object.entries(p.sales_by_channel || {});
+            if (entries.length === 0) return;
+
+            const colorMap = {
+                'Shopify': '#28a745',
+                'Allegro': '#ff8c00',
+                'OLX': '#17a2b8',
+                'shop': '#28a745'
+            };
+            const defaultColors = ['#6c757d', '#6610f2', '#e83e8c', '#fd7e14'];
+
+            const labels = entries.map(e => e[0]);
+            const data = entries.map(e => e[1]);
+            const colors = labels.map((l, i) => colorMap[l] || defaultColors[i % defaultColors.length]);
+
+            chartInstance = new Chart(canvas, {
+                type: 'doughnut',
+                data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { padding: 12, font: { size: 12 } } }
+                    }
+                }
+            });
+        }
+
+        function toggleDetail(rowKey, idx) {
+            if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+            expandedRowKey = (expandedRowKey === rowKey) ? null : rowKey;
+            renderData();
         }
 
         function sortBy(column) {
@@ -189,7 +586,7 @@
                 sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
             } else {
                 sortColumn = column;
-                sortDirection = (column === 'product_name' || column === 'sku') ? 'asc' : 'desc';
+                sortDirection = (column === 'product_name' || column === 'sku' || column === 'category') ? 'asc' : 'desc';
             }
             renderData();
         }
@@ -227,10 +624,9 @@
             window.location.href = '/api/download';
         }
 
-        // Initial load
+        // ========== INIT ==========
+        applyLanguage();
         fetchSalesData();
-        
-        // Also refresh every 5 minutes as backup
         setInterval(fetchSalesData, 300000);
     </script>
 </body>

@@ -2,6 +2,7 @@
 """
 BaseLinker Sales Dashboard - FastAPI Application
 Displays all sold products with real-time updates, Excel export, and activity tracking
+Enhanced: category detection, purchase orders, revenue tracking, sales channels
 """
 
 import os
@@ -31,13 +32,15 @@ cache = {
     "data": None,
     "last_updated": None,
     "next_refresh": None,
-    "is_refreshing": False
+    "is_refreshing": False,
+    "purchase_orders": []
 }
 
 REFRESH_INTERVAL = 3600  # 1 hour in seconds
 
 # Database connection
 db_conn = None
+
 
 def get_db_connection():
     """Get PostgreSQL connection"""
@@ -53,6 +56,7 @@ def get_db_connection():
         print(f"Database connection error: {e}")
         return None
 
+
 def init_database():
     """Initialize database tables"""
     conn = get_db_connection()
@@ -60,7 +64,6 @@ def init_database():
         return
     try:
         cur = conn.cursor()
-        # Activity log table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS activity_log (
                 id SERIAL PRIMARY KEY,
@@ -72,7 +75,6 @@ def init_database():
                 details JSONB
             )
         """)
-        # Sales snapshot table (tracks changes over time)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sales_snapshot (
                 id SERIAL PRIMARY KEY,
@@ -88,6 +90,7 @@ def init_database():
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error: {e}")
+
 
 def log_activity(action: str, data: dict = None):
     """Log activity to database"""
@@ -111,6 +114,7 @@ def log_activity(action: str, data: dict = None):
     except Exception as e:
         print(f"Log activity error: {e}")
 
+
 def save_sales_snapshot(products: list):
     """Save current sales data snapshot"""
     conn = get_db_connection()
@@ -118,7 +122,7 @@ def save_sales_snapshot(products: list):
         return
     try:
         cur = conn.cursor()
-        for p in products[:50]:  # Save top 50 products
+        for p in products[:50]:
             cur.execute("""
                 INSERT INTO sales_snapshot (sku, product_name, units_sold, current_stock)
                 VALUES (%s, %s, %s, %s)
@@ -147,6 +151,45 @@ def call_baselinker(method: str, params: dict = None) -> dict:
         return result
     except Exception as e:
         return {"error": str(e)}
+
+
+def determine_category(name: str) -> str:
+    """Determine product category from Polish product name"""
+    name_lower = name.lower()
+
+    # Coffee Tables (check BEFORE generic tables)
+    if 'stolik kawowy' in name_lower or u'\u0142awa' in name_lower or 'lawa' in name_lower:
+        return 'Coffee Tables'
+
+    # Bar Stools (check BEFORE generic chairs)
+    if 'hoker' in name_lower or 'barowy' in name_lower:
+        return 'Bar Stools'
+
+    # Ceramic Tables
+    if 'ceramiczn' in name_lower or 'ceramic' in name_lower:
+        if u'st\u00f3\u0142' in name_lower or 'stol' in name_lower or 'table' in name_lower:
+            return 'Ceramic Tables'
+
+    # Wooden Tables
+    wood_keywords = ['drewn', 'industrialn', 'wooden', 'wood']
+    if any(kw in name_lower for kw in wood_keywords):
+        if u'st\u00f3\u0142' in name_lower or 'stol' in name_lower:
+            if 'stolik' not in name_lower:
+                return 'Wooden Tables'
+
+    # Tables (generic, not caught above)
+    if (u'st\u00f3\u0142' in name_lower or 'stol' in name_lower) and 'stolik' not in name_lower:
+        return 'Tables'
+
+    # Armchairs (check BEFORE generic chairs)
+    if 'fotel' in name_lower or 'armchair' in name_lower:
+        return 'Armchairs'
+
+    # Chairs
+    if u'krzes\u0142o' in name_lower or 'krzeslo' in name_lower or ('chair' in name_lower and 'armchair' not in name_lower):
+        return 'Chairs'
+
+    return 'Other'
 
 
 def fetch_all_wyslane_orders() -> list:
@@ -182,15 +225,28 @@ def fetch_all_wyslane_orders() -> list:
 
 
 def aggregate_sales(orders: list) -> dict:
-    """Aggregate sales by variant"""
+    """Aggregate sales by variant with revenue and channel tracking"""
     sales_by_variant = defaultdict(lambda: {
         'product_name': '',
         'sku': '',
         'units_sold': 0,
-        'bl_product_id': ''
+        'bl_product_id': '',
+        'total_revenue': 0.0,
+        'sales_by_channel': defaultdict(int)
     })
 
     for order in orders:
+        # Detect sales channel
+        source = order.get('order_source', 'unknown')
+        if 'allegro' in source.lower():
+            channel = 'Allegro'
+        elif 'shopify' in source.lower() or source == 'shop':
+            channel = 'Shopify'
+        elif 'olx' in source.lower():
+            channel = 'OLX'
+        else:
+            channel = source
+
         for product in order.get('products', []):
             bl_product_id = str(product.get('variant_id', ''))
             if not bl_product_id or bl_product_id == '0':
@@ -199,6 +255,7 @@ def aggregate_sales(orders: list) -> dict:
             sku = product.get('sku', '') or ''
             name = product.get('name', '') or 'Unknown'
             qty = int(product.get('quantity', 1))
+            price = float(product.get('price_brutto', 0))
 
             variant_key = sku if sku else bl_product_id
 
@@ -206,12 +263,20 @@ def aggregate_sales(orders: list) -> dict:
             sales_by_variant[variant_key]['sku'] = sku
             sales_by_variant[variant_key]['units_sold'] += qty
             sales_by_variant[variant_key]['bl_product_id'] = bl_product_id
+            sales_by_variant[variant_key]['total_revenue'] += price * qty
+            sales_by_variant[variant_key]['sales_by_channel'][channel] += qty
 
-    return dict(sales_by_variant)
+    # Convert defaultdicts to regular dicts for JSON serialization
+    result = {}
+    for key, val in sales_by_variant.items():
+        val['sales_by_channel'] = dict(val['sales_by_channel'])
+        result[key] = val
+
+    return result
 
 
 def get_inventory(product_ids: list) -> dict:
-    """Fetch current inventory for products"""
+    """Fetch current inventory for products, including Shopify variant IDs"""
     if not product_ids:
         return {}
 
@@ -238,14 +303,60 @@ def get_inventory(product_ids: list) -> dict:
             images = product_info.get('images', {})
             image_url = list(images.values())[0] if images else None
 
+            # Extract Shopify variant ID from links
+            links = product_info.get('links', {}).get('shop_5017156', {})
+            shopify_variant_id = str(links.get('variant_id', ''))
+
             inventory[pid_str] = {
                 'stock': total_stock,
-                'image_url': image_url
+                'image_url': image_url,
+                'shopify_variant_id': shopify_variant_id
             }
 
         time.sleep(0.5)
 
     return inventory
+
+
+def fetch_purchase_orders() -> list:
+    """Fetch all purchase orders from BaseLinker"""
+    all_pos = []
+    date_from = 1704067200  # Jan 1, 2024
+    date_to = int(time.time())
+    page = 0
+
+    while True:
+        result = call_baselinker('getInventoryPurchaseOrders', {
+            'inventory_id': BASELINKER_INVENTORY_ID,
+            'date_from': date_from,
+            'date_to': date_to,
+            'page': page
+        })
+
+        if "error" in result:
+            print(f"PO fetch error: {result.get('error')}")
+            break
+
+        orders = result.get('orders', [])
+        if not orders:
+            break
+
+        all_pos.extend(orders)
+        page += 1
+        time.sleep(0.6)
+
+    return all_pos
+
+
+def fetch_purchase_order_items(order_id: int) -> list:
+    """Fetch items for a specific purchase order"""
+    result = call_baselinker('getInventoryPurchaseOrderItems', {
+        'purchase_order_id': order_id
+    })
+
+    if "error" not in result:
+        return result.get('items', [])
+    return []
 
 
 def refresh_data():
@@ -256,22 +367,75 @@ def refresh_data():
     cache["is_refreshing"] = True
 
     try:
+        # Fetch orders and aggregate sales
         orders = fetch_all_wyslane_orders()
         sales_data = aggregate_sales(orders)
         product_ids = [d['bl_product_id'] for d in sales_data.values() if d['bl_product_id']]
         inventory = get_inventory(product_ids)
 
+        # Fetch purchase orders
+        print("Fetching purchase orders...")
+        pos = fetch_purchase_orders()
+        po_items_map = {}  # product_id -> [PO references]
+        po_list = []
+
+        for po in pos:
+            po_id = po.get('purchase_order_id') or po.get('order_id')
+            if not po_id:
+                continue
+
+            doc_number = po.get('document_number', f'PO-{po_id}')
+            items = fetch_purchase_order_items(po_id)
+            time.sleep(0.3)
+
+            po_entry = {
+                'po_id': po_id,
+                'document_number': doc_number,
+                'status': po.get('status', ''),
+                'date': po.get('date_add', ''),
+                'items_count': len(items),
+                'product_ids': []
+            }
+
+            for item in items:
+                pid = str(item.get('product_id', ''))
+                if pid:
+                    po_entry['product_ids'].append(pid)
+                    if pid not in po_items_map:
+                        po_items_map[pid] = []
+                    po_items_map[pid].append({
+                        'po_id': po_id,
+                        'document_number': doc_number,
+                        'quantity_ordered': item.get('quantity', 0),
+                        'item_cost': float(item.get('price', 0))
+                    })
+
+            po_list.append(po_entry)
+
+        print(f"Fetched {len(po_list)} purchase orders")
+
+        # Build final products list
         products = []
+        total_revenue = 0.0
+
         for variant_key, data in sales_data.items():
             bl_pid = data['bl_product_id']
             inv_info = inventory.get(bl_pid, {})
+            revenue = round(data['total_revenue'], 2)
+            total_revenue += revenue
 
             products.append({
                 'image_url': inv_info.get('image_url', ''),
                 'product_name': data['product_name'],
                 'sku': data['sku'],
                 'units_sold': data['units_sold'],
-                'current_stock': inv_info.get('stock', 0)
+                'current_stock': inv_info.get('stock', 0),
+                'total_revenue': revenue,
+                'sales_by_channel': data['sales_by_channel'],
+                'category': determine_category(data['product_name']),
+                'shopify_variant_id': inv_info.get('shopify_variant_id', ''),
+                'bl_product_id': bl_pid,
+                'purchase_orders': po_items_map.get(bl_pid, [])
             })
 
         products.sort(key=lambda x: x['units_sold'], reverse=True)
@@ -281,10 +445,12 @@ def refresh_data():
             "total_variants": len(products),
             "total_units_sold": sum(p['units_sold'] for p in products),
             "total_orders": len(orders),
+            "total_revenue": round(total_revenue, 2),
             "products": products
         }
         cache["last_updated"] = now.isoformat()
         cache["next_refresh"] = (now + timedelta(seconds=REFRESH_INTERVAL)).isoformat()
+        cache["purchase_orders"] = po_list
 
         # Log to database
         log_activity("refresh", cache["data"])
@@ -292,6 +458,8 @@ def refresh_data():
 
     except Exception as e:
         print(f"Error refreshing data: {e}")
+        import traceback
+        traceback.print_exc()
         log_activity("error", {"message": str(e)})
     finally:
         cache["is_refreshing"] = False
@@ -354,6 +522,14 @@ async def get_sales():
     }
 
 
+@app.get("/api/purchase-orders")
+async def get_purchase_orders():
+    """Return the list of purchase orders"""
+    return {
+        "purchase_orders": cache.get("purchase_orders", [])
+    }
+
+
 @app.post("/api/refresh")
 async def force_refresh(background_tasks: BackgroundTasks):
     if cache["is_refreshing"]:
@@ -410,14 +586,18 @@ async def download_excel():
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
-    ws.merge_cells('A1:E1')
+    ws.merge_cells('A1:G1')
     ws['A1'] = "BASELINKER SALES REPORT - WYSLANE ORDERS"
     ws['A1'].font = Font(bold=True, size=14)
 
-    ws.merge_cells('A2:E2')
+    ws.merge_cells('A2:G2')
     ws['A2'] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
 
-    headers = [("Product Name", 50), ("SKU", 25), ("Units Sold", 12), ("Current Stock", 14), ("Image URL", 40)]
+    headers = [
+        ("Product Name", 50), ("SKU", 25), ("Category", 18),
+        ("Units Sold", 12), ("Revenue (PLN)", 16),
+        ("Current Stock", 14), ("Image URL", 40)
+    ]
 
     for col, (header, width) in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col, value=header)
@@ -429,21 +609,27 @@ async def download_excel():
     for row_idx, product in enumerate(cache["data"]["products"], 5):
         ws.cell(row=row_idx, column=1, value=product['product_name'][:80]).border = thin_border
         ws.cell(row=row_idx, column=2, value=product['sku']).border = thin_border
-        units_cell = ws.cell(row=row_idx, column=3, value=product['units_sold'])
+        ws.cell(row=row_idx, column=3, value=product.get('category', 'Other')).border = thin_border
+        units_cell = ws.cell(row=row_idx, column=4, value=product['units_sold'])
         units_cell.border = thin_border
         units_cell.alignment = Alignment(horizontal='center')
-        stock_cell = ws.cell(row=row_idx, column=4, value=product['current_stock'])
+        rev_cell = ws.cell(row=row_idx, column=5, value=round(product.get('total_revenue', 0), 2))
+        rev_cell.border = thin_border
+        rev_cell.alignment = Alignment(horizontal='right')
+        rev_cell.number_format = '#,##0.00'
+        stock_cell = ws.cell(row=row_idx, column=6, value=product['current_stock'])
         stock_cell.border = thin_border
         stock_cell.alignment = Alignment(horizontal='center')
         if product['current_stock'] == 0:
             stock_cell.font = Font(bold=True, color="FF0000")
         elif product['current_stock'] < 5:
             stock_cell.font = Font(color="FF6600")
-        ws.cell(row=row_idx, column=5, value=product['image_url'] or '').border = thin_border
+        ws.cell(row=row_idx, column=7, value=product.get('image_url', '') or '').border = thin_border
 
     summary_row = len(cache["data"]["products"]) + 5
     ws.cell(row=summary_row, column=1, value=f"TOTAL: {cache['data']['total_variants']} variants").font = Font(bold=True)
-    ws.cell(row=summary_row, column=3, value=cache['data']['total_units_sold']).font = Font(bold=True)
+    ws.cell(row=summary_row, column=4, value=cache['data']['total_units_sold']).font = Font(bold=True)
+    ws.cell(row=summary_row, column=5, value=round(cache['data'].get('total_revenue', 0), 2)).font = Font(bold=True)
 
     output = BytesIO()
     wb.save(output)
