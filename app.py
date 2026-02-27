@@ -37,6 +37,36 @@ GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
 IMPORT_SHEET_ID = os.getenv("IMPORT_SHEET_ID", "1Ld-tbGXGIheTsLc0RCg5RdtbqkOty4gTf3wEFL9YufE")
 FALLBACK_MARKUP_GROSS = 3.444  # cost = gross_price / 3.444 (2.8x net markup + 23% VAT)
 
+# Currency conversion — BaseLinker returns price_brutto in the ORDER's currency
+EXCHANGE_RATES_TO_PLN = {
+    'PLN': 1.0,
+    'EUR': 4.30,
+    'USD': 4.05,
+    'GBP': 5.10,
+    'CZK': 0.175,
+    'HUF': 0.0108,
+    'SEK': 0.39,
+    'DKK': 0.58,
+    'NOK': 0.38,
+    'CHF': 4.55,
+    'RON': 0.87,
+    'BGN': 2.20,
+    'HRK': 0.57,
+    'RUB': 0.045,
+    'UAH': 0.11,
+}
+
+
+def convert_to_pln(amount: float, currency: str) -> float:
+    """Convert amount from order currency to PLN."""
+    if not currency or currency.upper() == 'PLN':
+        return amount
+    rate = EXCHANGE_RATES_TO_PLN.get(currency.upper())
+    if rate:
+        return amount * rate
+    print(f"Unknown currency '{currency}' — treating as PLN")
+    return amount
+
 # Data cache
 cache = {
     "data": None,
@@ -465,13 +495,6 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
     })
 
     for order in orders:
-        # Payment filter: COD + paid only
-        payment_done = float(order.get('payment_done', 0) or 0)
-        payment_method = (order.get('payment_method', '') or '').lower()
-        is_cod = 'pobraniem' in payment_method or 'cod' in payment_method
-        if not is_cod and payment_done <= 0:
-            continue
-
         # Detect sales channel
         source = order.get('order_source', 'unknown')
         source_id = str(order.get('order_source_id', ''))
@@ -488,6 +511,9 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
         else:
             channel = source
 
+        # Get order currency for price conversion
+        order_currency = (order.get('currency', '') or 'PLN').upper()
+
         for product in order.get('products', []):
             bl_product_id = str(product.get('variant_id', ''))
             if not bl_product_id or bl_product_id == '0':
@@ -496,7 +522,8 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
             sku = product.get('sku', '') or ''
             name = product.get('name', '') or 'Unknown'
             qty = int(product.get('quantity', 1))
-            price = float(product.get('price_brutto', 0))
+            price_original = float(product.get('price_brutto', 0))
+            price = convert_to_pln(price_original, order_currency)
 
             variant_key = sku if sku else bl_product_id
 
@@ -799,8 +826,17 @@ def refresh_data():
         cache["all_recent_orders"] = all_recent
 
         sales_data = aggregate_sales(orders, order_sources)
-        product_ids = [d['bl_product_id'] for d in sales_data.values() if d['bl_product_id']]
-        inventory = get_inventory(product_ids)
+        product_ids = set(d['bl_product_id'] for d in sales_data.values() if d['bl_product_id'])
+
+        # Also include product IDs from recent all-status orders
+        # so that Today/Yesterday products have images even if not yet shipped
+        for order in all_recent:
+            for product in order.get('products', []):
+                vid = str(product.get('variant_id', ''))
+                if vid and vid != '0':
+                    product_ids.add(vid)
+
+        inventory = get_inventory(list(product_ids))
 
         # Cache inventory for reuse
         cache["inventory"] = inventory
