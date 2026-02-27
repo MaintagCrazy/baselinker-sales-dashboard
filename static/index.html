@@ -2,12 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BaseLinker Sales Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#4472C4">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+    <title>BL Sales Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #333; min-height: 100vh; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #333; min-height: 100vh; padding-bottom: env(safe-area-inset-bottom, 0); }
         .header { background: linear-gradient(135deg, #4472C4 0%, #2c5aa0 100%); color: white; padding: 20px 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .header h1 { font-size: 24px; font-weight: 600; }
@@ -91,26 +98,172 @@
         .summary { background: #f8f9fa; padding: 15px 20px; font-size: 14px; color: #666; border-top: 2px solid #e0e0e0; }
         .summary strong { color: #333; }
         .error { background: #fff5f5; border: 1px solid #ffcccc; color: #c00; padding: 20px; border-radius: 8px; text-align: center; }
+
+        /* ========== FLOATING NAV (Mobile) ========== */
+        .floating-nav {
+            display: none;
+            position: fixed;
+            bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1f2937;
+            border-radius: 50px;
+            padding: 6px 8px;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            z-index: 1000;
+        }
+        .floating-nav button {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            color: #9ca3af;
+            transition: all 0.2s;
+            border: none;
+            background: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .floating-nav button svg { width: 20px; height: 20px; }
+        .floating-nav button.active {
+            background: #3b82f6;
+            color: white;
+            box-shadow: 0 2px 8px rgba(59,130,246,0.4);
+        }
+        .floating-nav button:active { transform: scale(0.92); }
+        .floating-nav .nav-label {
+            position: absolute;
+            bottom: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 9px;
+            color: #9ca3af;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+        .floating-nav button.active .nav-label { color: #93c5fd; }
+
+        /* ========== MOBILE VIEWS ========== */
+        .mobile-view { display: none; }
+
+        /* Mobile time panel */
+        .mobile-time-panel {
+            padding: 20px;
+            padding-bottom: 100px;
+        }
+        .mobile-time-panel h3 { font-size: 16px; font-weight: 600; color: #333; margin-bottom: 16px; }
+        .mobile-preset-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .mobile-preset-btn {
+            padding: 14px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .mobile-preset-btn.active {
+            border-color: #4472C4;
+            background: #e8eefa;
+            color: #4472C4;
+            font-weight: 600;
+        }
+        .mobile-preset-btn:active { transform: scale(0.97); }
+        .mobile-custom-range {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .mobile-custom-range label { display: block; font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; margin-bottom: 6px; }
+        .mobile-custom-range input[type="date"] { width: 100%; padding: 12px; border: 1px solid #d0d0d0; border-radius: 8px; font-size: 15px; margin-bottom: 12px; }
+        .mobile-custom-range .mobile-apply-btn { width: 100%; padding: 14px; background: #4472C4; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+
+        /* Mobile filter panel */
+        .mobile-filter-panel {
+            padding: 20px;
+            padding-bottom: 100px;
+        }
+        .mobile-filter-panel h3 { font-size: 16px; font-weight: 600; color: #333; margin-bottom: 16px; }
+        .mobile-filter-group {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .mobile-filter-group label { display: block; font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; margin-bottom: 8px; }
+        .mobile-filter-group select, .mobile-filter-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d0d0d0;
+            border-radius: 8px;
+            font-size: 15px;
+            background: white;
+        }
+        .mobile-filter-apply {
+            width: 100%;
+            padding: 14px;
+            background: #4472C4;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        /* ========== MOBILE RESPONSIVE ========== */
         @media (max-width: 768px) {
-            .header-stats { gap: 10px; }
-            .controls { flex-direction: column; align-items: stretch; }
-            .buttons { justify-content: center; }
-            .time-bar { padding: 10px 15px; gap: 6px; }
-            .time-btn { padding: 5px 10px; font-size: 12px; }
-            .date-range { flex-wrap: wrap; margin-left: 0; margin-top: 4px; }
-            .filter-bar { flex-direction: column; }
-            .filter-bar select, .filter-bar input { min-width: 100%; }
-            .product-name { max-width: 200px; }
-            td, th { padding: 10px 12px; }
-            .detail-panel { grid-template-columns: 1fr; }
-            .header-top { flex-direction: column; gap: 10px; align-items: flex-start; }
+            .floating-nav { display: flex; }
+            body { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+
+            /* Hide desktop-only bars on mobile */
+            .controls { display: none; }
+            .time-bar { display: none; }
+            .filter-bar { display: none; }
+
+            .header { padding: 16px 20px; }
+            .header h1 { font-size: 18px; }
+            .stat-card .stat-value { font-size: 16px; }
+            .stat-card .stat-label { font-size: 10px; }
+            .header-stats { gap: 8px; }
+            .stat-card { padding: 6px 12px; }
+            .container { padding: 12px 12px; }
+            .product-name { max-width: 160px; font-size: 13px; }
+            td, th { padding: 10px 8px; font-size: 12px; }
+            .product-image, .no-image { width: 40px; height: 40px; }
+            th { font-size: 11px; }
+            .detail-panel { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
+            .header-top { flex-direction: column; gap: 8px; align-items: flex-start; }
+
+            /* Hide category column on mobile */
+            th:nth-child(4), td:nth-child(4) { display: none; }
+        }
+
+        /* Large screens - never show mobile views */
+        @media (min-width: 769px) {
+            .mobile-view { display: none !important; }
         }
     </style>
 </head>
 <body>
     <div class="header">
         <div class="header-top">
-            <h1 id="dashboard-title">BaseLinker Sales Dashboard</h1>
+            <h1 id="dashboard-title">BL Sales Dashboard</h1>
             <div class="lang-toggle" id="lang-toggle" onclick="toggleLanguage()">
                 <span id="lang-en" class="active-lang">EN</span>
                 <span id="lang-vi" class="inactive-lang">VI</span>
@@ -131,6 +284,8 @@
             </div>
         </div>
     </div>
+
+    <!-- Desktop Controls -->
     <div class="controls">
         <div class="refresh-info">
             <span><span data-i18n="lastUpdated">Last updated</span>: <strong id="last-updated">--</strong></span>
@@ -149,7 +304,7 @@
         </div>
     </div>
 
-    <!-- Time Frame Bar -->
+    <!-- Desktop Time Frame Bar -->
     <div class="time-bar" id="time-bar">
         <span class="time-bar-label" data-i18n="timeFrame">Time Frame</span>
         <button class="time-btn active" data-preset="all" onclick="selectPreset('all')" data-i18n="allTime">All Time</button>
@@ -168,6 +323,7 @@
         </div>
     </div>
 
+    <!-- Desktop Filter Bar -->
     <div class="filter-bar" id="filter-bar">
         <div class="filter-group">
             <label data-i18n="categoryLabel">Category</label>
@@ -186,7 +342,9 @@
             <input type="text" id="filter-search" placeholder="Search by name, SKU, or paste Shopify URL..." oninput="applyFilters()">
         </div>
     </div>
-    <div class="container">
+
+    <!-- Main Content (Dashboard view) -->
+    <div class="container" id="main-container">
         <div id="content">
             <div class="loading">
                 <div class="spinner"></div>
@@ -195,11 +353,81 @@
         </div>
     </div>
 
+    <!-- Mobile Time View -->
+    <div class="mobile-view" id="mobile-time-view">
+        <div class="mobile-time-panel">
+            <h3 data-i18n="timeFrame">Time Frame</h3>
+            <div class="mobile-preset-grid" id="mobile-preset-grid">
+                <button class="mobile-preset-btn active" data-preset="all" onclick="mobileSelectPreset('all')" data-i18n="allTime">All Time</button>
+                <button class="mobile-preset-btn" data-preset="today" onclick="mobileSelectPreset('today')" data-i18n="today">Today</button>
+                <button class="mobile-preset-btn" data-preset="yesterday" onclick="mobileSelectPreset('yesterday')" data-i18n="yesterday">Yesterday</button>
+                <button class="mobile-preset-btn" data-preset="7d" onclick="mobileSelectPreset('7d')" data-i18n="last7Days">Last 7 Days</button>
+                <button class="mobile-preset-btn" data-preset="30d" onclick="mobileSelectPreset('30d')" data-i18n="last30Days">Last 30 Days</button>
+                <button class="mobile-preset-btn" data-preset="quarter" onclick="mobileSelectPreset('quarter')" data-i18n="lastQuarter">Last Quarter</button>
+            </div>
+            <div class="mobile-custom-range">
+                <label data-i18n="from">From</label>
+                <input type="date" id="mobile-date-from">
+                <label data-i18n="to">To</label>
+                <input type="date" id="mobile-date-to">
+                <button class="mobile-apply-btn" onclick="mobileApplyCustomRange()" data-i18n="apply">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Filter View -->
+    <div class="mobile-view" id="mobile-filter-view">
+        <div class="mobile-filter-panel">
+            <h3 data-i18n="filters">Filters</h3>
+            <div class="mobile-filter-group">
+                <label data-i18n="categoryLabel">Category</label>
+                <select id="mobile-filter-category">
+                    <option value="" data-i18n="allCategories">All Categories</option>
+                </select>
+            </div>
+            <div class="mobile-filter-group">
+                <label data-i18n="purchaseOrderLabel">Purchase Order</label>
+                <select id="mobile-filter-po">
+                    <option value="" data-i18n="allPOs">All Purchase Orders</option>
+                </select>
+            </div>
+            <div class="mobile-filter-group">
+                <label data-i18n="searchLabel">Search</label>
+                <input type="text" id="mobile-filter-search" placeholder="Search by name, SKU...">
+            </div>
+            <button class="mobile-filter-apply" onclick="mobileApplyFilters()" data-i18n="applyFilters">Apply Filters</button>
+        </div>
+    </div>
+
+    <!-- Floating Pill Navbar (Mobile) -->
+    <nav class="floating-nav" id="floating-nav">
+        <button class="active" onclick="switchMobileView('dashboard')" id="nav-dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            <span class="nav-label" data-i18n="navDashboard">Dashboard</span>
+        </button>
+        <button onclick="switchMobileView('time')" id="nav-time">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span class="nav-label" data-i18n="navTime">Time</span>
+        </button>
+        <button onclick="switchMobileView('filter')" id="nav-filter">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            <span class="nav-label" data-i18n="navFilter">Filter</span>
+        </button>
+        <button onclick="downloadExcel()" id="nav-download">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span class="nav-label" data-i18n="navExport">Export</span>
+        </button>
+        <button onclick="forceRefresh()" id="nav-refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <span class="nav-label" data-i18n="navRefresh">Refresh</span>
+        </button>
+    </nav>
+
     <script>
         // ========== I18N ==========
         const translations = {
             en: {
-                dashboardTitle: 'BaseLinker Sales Dashboard',
+                dashboardTitle: 'BL Sales Dashboard',
                 products: 'Products',
                 unitsSold: 'Units Sold',
                 orders: 'Orders',
@@ -241,7 +469,6 @@
                 noData: 'No data available',
                 errorLoading: 'Error loading data',
                 tryRefresh: 'Please try refreshing the page.',
-                // Time frame i18n
                 timeFrame: 'Time Frame',
                 allTime: 'All Time',
                 today: 'Today',
@@ -252,10 +479,17 @@
                 custom: 'Custom',
                 from: 'From',
                 to: 'To',
-                apply: 'Apply'
+                apply: 'Apply',
+                filters: 'Filters',
+                applyFilters: 'Apply Filters',
+                navDashboard: 'Dashboard',
+                navTime: 'Time',
+                navFilter: 'Filter',
+                navExport: 'Export',
+                navRefresh: 'Refresh'
             },
             vi: {
-                dashboardTitle: 'B\u1ea3ng \u0111i\u1ec1u khi\u1ec3n BaseLinker',
+                dashboardTitle: 'B\u1ea3ng \u0111i\u1ec1u khi\u1ec3n BL',
                 products: 'S\u1ea3n ph\u1ea9m',
                 unitsSold: 'S\u1ed1 l\u01b0\u1ee3ng \u0111\u00e3 b\u00e1n',
                 orders: '\u0110\u01a1n h\u00e0ng',
@@ -297,7 +531,6 @@
                 noData: 'Kh\u00f4ng c\u00f3 d\u1eef li\u1ec7u',
                 errorLoading: 'L\u1ed7i t\u1ea3i d\u1eef li\u1ec7u',
                 tryRefresh: 'Vui l\u00f2ng t\u1ea3i l\u1ea1i trang.',
-                // Time frame i18n
                 timeFrame: 'Khung th\u1eddi gian',
                 allTime: 'T\u1ea5t c\u1ea3',
                 today: 'H\u00f4m nay',
@@ -308,7 +541,14 @@
                 custom: 'T\u00f9y ch\u1ecdn',
                 from: 'T\u1eeb',
                 to: '\u0110\u1ebfn',
-                apply: '\u00c1p d\u1ee5ng'
+                apply: '\u00c1p d\u1ee5ng',
+                filters: 'B\u1ed9 l\u1ecdc',
+                applyFilters: '\u00c1p d\u1ee5ng b\u1ed9 l\u1ecdc',
+                navDashboard: 'B\u1ea3ng',
+                navTime: 'Th\u1eddi gian',
+                navFilter: 'L\u1ecdc',
+                navExport: 'Xu\u1ea5t',
+                navRefresh: 'L\u00e0m m\u1edbi'
             }
         };
 
@@ -342,6 +582,62 @@
             });
             const searchInput = document.getElementById('filter-search');
             if (searchInput) searchInput.placeholder = t('searchPlaceholder');
+            const mobileSearch = document.getElementById('mobile-filter-search');
+            if (mobileSearch) mobileSearch.placeholder = t('searchPlaceholder');
+        }
+
+        // ========== MOBILE NAVIGATION ==========
+        let currentMobileView = 'dashboard';
+
+        function switchMobileView(view) {
+            currentMobileView = view;
+            // Update nav buttons
+            document.querySelectorAll('.floating-nav button').forEach(btn => btn.classList.remove('active'));
+            const navBtn = document.getElementById('nav-' + view);
+            if (navBtn) navBtn.classList.add('active');
+
+            // Toggle views
+            document.getElementById('main-container').style.display = (view === 'dashboard') ? '' : 'none';
+            document.getElementById('mobile-time-view').style.display = (view === 'time') ? 'block' : 'none';
+            document.getElementById('mobile-filter-view').style.display = (view === 'filter') ? 'block' : 'none';
+
+            // Scroll to top on view switch
+            window.scrollTo(0, 0);
+        }
+
+        function mobileSelectPreset(preset) {
+            // Update mobile UI
+            document.querySelectorAll('#mobile-preset-grid .mobile-preset-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-preset') === preset);
+            });
+            // Call the same preset logic
+            selectPreset(preset);
+            // Switch back to dashboard after selection
+            setTimeout(() => switchMobileView('dashboard'), 300);
+        }
+
+        function mobileApplyCustomRange() {
+            const fromVal = document.getElementById('mobile-date-from').value;
+            const toVal = document.getElementById('mobile-date-to').value;
+            if (fromVal) activeDateFrom = fromVal;
+            if (toVal) activeDateTo = toVal;
+            activePreset = 'custom';
+            // Sync to desktop inputs
+            document.getElementById('date-from').value = fromVal;
+            document.getElementById('date-to').value = toVal;
+            // Reset preset highlights
+            document.querySelectorAll('#mobile-preset-grid .mobile-preset-btn').forEach(btn => btn.classList.remove('active'));
+            fetchSalesData();
+            setTimeout(() => switchMobileView('dashboard'), 300);
+        }
+
+        function mobileApplyFilters() {
+            // Sync mobile filters to desktop
+            document.getElementById('filter-category').value = document.getElementById('mobile-filter-category').value;
+            document.getElementById('filter-po').value = document.getElementById('mobile-filter-po').value;
+            document.getElementById('filter-search').value = document.getElementById('mobile-filter-search').value;
+            applyFilters();
+            switchMobileView('dashboard');
         }
 
         // ========== TIME FRAME STATE ==========
@@ -399,7 +695,6 @@
                     break;
                 }
                 case 'custom':
-                    // Show date inputs, don't fetch yet
                     updateTimeBarUI();
                     return;
             }
@@ -419,19 +714,16 @@
         }
 
         function updateTimeBarUI() {
-            // Highlight active preset button
+            // Desktop preset buttons
             document.querySelectorAll('.time-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.getAttribute('data-preset') === activePreset);
             });
-
-            // Show/hide custom date range inputs
+            // Desktop date range
             const dateRange = document.getElementById('date-range');
             if (activePreset === 'custom') {
                 dateRange.classList.add('visible');
-                // Set default dates if empty
                 if (!document.getElementById('date-from').value) {
-                    const d = new Date();
-                    d.setDate(d.getDate() - 7);
+                    const d = new Date(); d.setDate(d.getDate() - 7);
                     document.getElementById('date-from').value = formatDate(d);
                 }
                 if (!document.getElementById('date-to').value) {
@@ -440,6 +732,10 @@
             } else {
                 dateRange.classList.remove('visible');
             }
+            // Mobile preset buttons sync
+            document.querySelectorAll('#mobile-preset-grid .mobile-preset-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-preset') === activePreset);
+            });
         }
 
         // ========== DATA ==========
@@ -483,7 +779,8 @@
             document.getElementById('total-variants').textContent = salesData.total_variants;
             document.getElementById('total-units').textContent = salesData.total_units_sold.toLocaleString();
             document.getElementById('total-orders').textContent = salesData.total_orders.toLocaleString();
-            document.getElementById('last-updated').textContent = new Date(salesData.last_updated).toLocaleTimeString();
+            const luEl = document.getElementById('last-updated');
+            if (luEl) luEl.textContent = new Date(salesData.last_updated).toLocaleTimeString();
         }
 
         function startCountdown() {
@@ -494,7 +791,8 @@
                 const diff = Math.max(0, Math.floor((nextRefreshTime - new Date()) / 1000));
                 const minutes = Math.floor(diff / 60);
                 const seconds = (diff % 60).toString().padStart(2, '0');
-                document.getElementById('countdown').textContent = `${minutes}:${seconds}`;
+                const cdEl = document.getElementById('countdown');
+                if (cdEl) cdEl.textContent = `${minutes}:${seconds}`;
                 if (diff <= 0) fetchSalesData();
             }, 1000);
         }
@@ -502,47 +800,53 @@
         // ========== FILTERS ==========
         function populateFilters() {
             if (!salesData || !salesData.products) return;
-            // Category filter
-            const catSelect = document.getElementById('filter-category');
-            const currentCat = catSelect.value;
+
             const categories = {};
             salesData.products.forEach(p => {
                 const cat = p.category || 'Other';
                 categories[cat] = (categories[cat] || 0) + 1;
             });
-            catSelect.innerHTML = `<option value="" data-i18n="allCategories">${t('allCategories')}</option>`;
-            Object.keys(categories).sort().forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = `${cat} (${categories[cat]})`;
-                catSelect.appendChild(opt);
-            });
-            catSelect.value = currentCat;
 
-            // PO filter
-            const poSelect = document.getElementById('filter-po');
-            const currentPO = poSelect.value;
-            poSelect.innerHTML = `<option value="" data-i18n="allPOs">${t('allPOs')}</option>`;
-            purchaseOrders.forEach(po => {
-                const opt = document.createElement('option');
-                opt.value = String(po.po_id);
-                opt.textContent = `${po.document_number} (${po.items_count} items)`;
-                poSelect.appendChild(opt);
+            // Desktop + Mobile category
+            ['filter-category', 'mobile-filter-category'].forEach(id => {
+                const sel = document.getElementById(id);
+                if (!sel) return;
+                const currentVal = sel.value;
+                sel.innerHTML = `<option value="" data-i18n="allCategories">${t('allCategories')}</option>`;
+                Object.keys(categories).sort().forEach(cat => {
+                    const opt = document.createElement('option');
+                    opt.value = cat;
+                    opt.textContent = `${cat} (${categories[cat]})`;
+                    sel.appendChild(opt);
+                });
+                sel.value = currentVal;
             });
-            poSelect.value = currentPO;
+
+            // Desktop + Mobile PO
+            ['filter-po', 'mobile-filter-po'].forEach(id => {
+                const sel = document.getElementById(id);
+                if (!sel) return;
+                const currentVal = sel.value;
+                sel.innerHTML = `<option value="" data-i18n="allPOs">${t('allPOs')}</option>`;
+                purchaseOrders.forEach(po => {
+                    const opt = document.createElement('option');
+                    opt.value = String(po.po_id);
+                    opt.textContent = `${po.document_number} (${po.items_count} items)`;
+                    sel.appendChild(opt);
+                });
+                sel.value = currentVal;
+            });
         }
 
         function getFilteredProducts() {
             if (!salesData || !salesData.products) return [];
             let products = salesData.products;
 
-            // Category filter
             const catFilter = document.getElementById('filter-category').value;
             if (catFilter) {
                 products = products.filter(p => p.category === catFilter);
             }
 
-            // PO filter
             const poFilter = document.getElementById('filter-po').value;
             if (poFilter) {
                 const po = purchaseOrders.find(p => String(p.po_id) === poFilter);
@@ -552,7 +856,6 @@
                 }
             }
 
-            // Search
             const searchVal = document.getElementById('filter-search').value.trim();
             if (searchVal) {
                 const variantMatch = searchVal.match(/[?&]variant=(\d+)/);
@@ -599,7 +902,7 @@
             products.forEach((p, idx) => {
                 const stockClass = p.current_stock === 0 ? 'stock-zero' : p.current_stock < 5 ? 'stock-low' : 'stock-ok';
                 const imageHtml = p.image_url
-                    ? `<img src="${p.image_url}" class="product-image" alt="${escapeHtml(p.sku)}" onerror="this.outerHTML='<div class=\\&quot;no-image\\&quot;>No img</div>'">`
+                    ? `<img src="${p.image_url}" class="product-image" alt="${escapeHtml(p.sku)}" onerror="this.outerHTML='<div class=\\"no-image\\">No img</div>'">`
                     : '<div class="no-image">No img</div>';
                 const rowKey = p.sku || p.bl_product_id;
                 const isExpanded = expandedRowKey === rowKey;
@@ -650,7 +953,6 @@
                     </div>
                 </div>`;
 
-            // Re-create chart if detail is open
             if (expandedRowKey) {
                 const p = products.find(x => (x.sku || x.bl_product_id) === expandedRowKey);
                 if (p) createChannelChart(p);
@@ -758,22 +1060,25 @@
         async function forceRefresh() {
             const btn = document.getElementById('refresh-btn');
             const status = document.getElementById('refresh-status');
-            btn.disabled = true;
-            status.textContent = 'Refreshing...';
-            status.style.color = '#4472C4';
+            if (btn) btn.disabled = true;
+            if (status) { status.textContent = 'Refreshing...'; status.style.color = '#4472C4'; }
+
+            // Animate the nav refresh button on mobile
+            const navRefresh = document.getElementById('nav-refresh');
+            if (navRefresh) navRefresh.style.animation = 'spin 1s linear infinite';
+
             try {
                 await fetch('/api/refresh', { method: 'POST' });
                 setTimeout(async () => {
                     await fetchSalesData();
-                    status.textContent = 'Updated!';
-                    status.style.color = '#28a745';
-                    setTimeout(() => { status.textContent = ''; }, 3000);
+                    if (status) { status.textContent = 'Updated!'; status.style.color = '#28a745'; setTimeout(() => { status.textContent = ''; }, 3000); }
+                    if (navRefresh) navRefresh.style.animation = '';
                 }, 2000);
             } catch (error) {
-                status.textContent = 'Error refreshing';
-                status.style.color = '#dc3545';
+                if (status) { status.textContent = 'Error refreshing'; status.style.color = '#dc3545'; }
+                if (navRefresh) navRefresh.style.animation = '';
             } finally {
-                btn.disabled = false;
+                if (btn) btn.disabled = false;
             }
         }
 
