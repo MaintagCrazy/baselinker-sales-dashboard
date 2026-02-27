@@ -34,7 +34,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # Google Sheets cost loading
 GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
-IMPORT_SHEET_ID = os.getenv("IMPORT_SHEET_ID", "1Ld-tbGXGIheTsLc0RCg5RdtbqkOty4gTf3wEFL9YufE")
+IMPORT_SHEET_ID = os.getenv("IMPORT_SHEET_ID", "1parHGahhvO6qnAnsvu4MNq18yl3M53Dzs6GCjry1yMg")
 FALLBACK_MARKUP_GROSS = 3.444  # cost = gross_price / 3.444 (2.8x net markup + 23% VAT)
 
 # Currency conversion — BaseLinker returns price_brutto in the ORDER's currency
@@ -76,7 +76,7 @@ cache = {
     "purchase_orders": [],
     "raw_orders": None,
     "inventory": None,
-    "po_items_map": None,
+    "po_items_by_sku": None,
     "order_sources": {},
     "all_recent_orders": None,
     "costs": ({}, {}),
@@ -240,16 +240,20 @@ def determine_category(name: str) -> str:
 
 # ========== COST LOADING ==========
 
-def load_costs_from_import_sheet():
-    """Load product costs from Google Sheets import tabs.
-    Replicates logic from Marbily App's sales_center_service.py.
+def load_costs_and_pos_from_import_sheet():
+    """Load product costs AND purchase order data from Google Sheets import tabs.
+
+    Each tab = one invoice/purchase order. Tab name = invoice name.
+    Returns (costs_by_sku, costs_by_base_sku, po_list, po_items_by_sku).
     """
     costs_by_sku = {}
     costs_by_base_sku = {}
+    po_list = []
+    po_items_by_sku = {}  # SKU -> [PO references]
 
     if not GOOGLE_CREDENTIALS_JSON:
         print("GOOGLE_CREDENTIALS_JSON not configured, skipping cost loading")
-        return costs_by_sku, costs_by_base_sku
+        return costs_by_sku, costs_by_base_sku, po_list, po_items_by_sku
 
     try:
         import gspread
@@ -264,6 +268,7 @@ def load_costs_from_import_sheet():
         sheet = client.open_by_key(IMPORT_SHEET_ID)
 
         for ws in sheet.worksheets():
+            tab_name = ws.title
             all_data = ws.get_all_values()
             if len(all_data) < 9:
                 continue
@@ -271,7 +276,7 @@ def load_costs_from_import_sheet():
             # Find header row (scan first 15 rows)
             header_row_idx = None
             for i in range(min(15, len(all_data))):
-                row_text = ' '.join([str(c).lower() for c in all_data[i][:20]])
+                row_text = ' '.join([str(c).lower() for c in all_data[i][:25]])
                 if 'model' in row_text and ('total cost' in row_text or 'unit price' in row_text):
                     header_row_idx = i
                     break
@@ -285,6 +290,8 @@ def load_costs_from_import_sheet():
             model_col = None
             color_col = None
             cost_col = None
+            qty_col = None
+            bl_variant_col = None
 
             for idx, header in enumerate(headers):
                 h = str(header).lower().strip()
@@ -294,9 +301,24 @@ def load_costs_from_import_sheet():
                     color_col = idx
                 if cost_col is None and 'total cost' in h and 'pln' in h and 'all units' not in h:
                     cost_col = idx
+                if qty_col is None and h in ('qty', 'quantity', 'ilosc', 'szt', 'ilość'):
+                    qty_col = idx
+                if bl_variant_col is None and ('baselinker' in h and 'variant' in h):
+                    bl_variant_col = idx
 
             if model_col is None or cost_col is None:
                 continue
+
+            # Build PO entry for this tab
+            po_entry = {
+                'po_id': tab_name,
+                'document_number': tab_name,
+                'items_count': 0,
+                'total_quantity': 0,
+                'total_cost': 0.0,
+                'product_skus': [],   # for SKU-based filtering
+                'product_ids': [],    # BaseLinker variant IDs if available
+            }
 
             count = 0
             for row in all_data[header_row_idx + 1:]:
@@ -306,31 +328,72 @@ def load_costs_from_import_sheet():
                 model = row[model_col].strip().upper() if model_col < len(row) else ""
                 color = row[color_col].strip().upper() if color_col and color_col < len(row) else ""
                 cost_str = row[cost_col].strip() if cost_col < len(row) else ""
+                qty_str = row[qty_col].strip() if qty_col is not None and qty_col < len(row) else "1"
+                bl_variant = row[bl_variant_col].strip() if bl_variant_col is not None and bl_variant_col < len(row) else ""
 
                 if not model or not cost_str:
                     continue
 
                 try:
-                    cost = float(cost_str.replace('z\u0142', '').replace('PLN', '').replace(',', '').strip())
-                    if cost > 0:
-                        if color and color not in ['N/A', '-', '']:
-                            costs_by_sku[f"{model}-{color}"] = cost
-                        costs_by_base_sku[model] = cost
-                        count += 1
+                    cost = float(cost_str.replace('zł', '').replace('PLN', '').replace(',', '').strip())
                 except:
                     continue
 
+                try:
+                    qty = int(float(qty_str)) if qty_str else 1
+                except:
+                    qty = 1
+
+                if cost <= 0:
+                    continue
+
+                # Build the full SKU key
+                full_sku = f"{model}-{color}" if color and color not in ('N/A', '-', '') else model
+
+                # Store costs
+                if color and color not in ('N/A', '-', ''):
+                    costs_by_sku[f"{model}-{color}"] = cost
+                costs_by_base_sku[model] = cost
+
+                # Build PO item reference
+                po_item = {
+                    'document_number': tab_name,
+                    'quantity_ordered': qty,
+                    'item_cost': cost,
+                    'product_sku': full_sku,
+                }
+
+                # Add to PO items map (keyed by multiple SKU forms for matching)
+                for sku_key in set([full_sku, model]):
+                    if sku_key not in po_items_by_sku:
+                        po_items_by_sku[sku_key] = []
+                    po_items_by_sku[sku_key].append(po_item)
+
+                # Track in PO entry
+                po_entry['product_skus'].append(full_sku)
+                po_entry['items_count'] += 1
+                po_entry['total_quantity'] += qty
+                po_entry['total_cost'] += cost * qty
+
+                if bl_variant and bl_variant != '0':
+                    po_entry['product_ids'].append(bl_variant)
+
+                count += 1
+
             if count > 0:
-                print(f"  Sheet '{ws.title}': {count} costs loaded")
+                po_entry['total_cost'] = round(po_entry['total_cost'], 2)
+                po_list.append(po_entry)
+                print(f"  Sheet '{tab_name}': {count} items, {po_entry['total_quantity']} units, {po_entry['total_cost']} PLN")
 
         print(f"Total costs loaded: {len(costs_by_sku)} SKU, {len(costs_by_base_sku)} base SKU")
+        print(f"Total import POs: {len(po_list)} invoices, {len(po_items_by_sku)} SKU mappings")
 
     except Exception as e:
-        print(f"Error loading costs from sheets: {e}")
+        print(f"Error loading costs/POs from sheets: {e}")
         import traceback
         traceback.print_exc()
 
-    return costs_by_sku, costs_by_base_sku
+    return costs_by_sku, costs_by_base_sku, po_list, po_items_by_sku
 
 
 def find_cost_for_sku(sku, costs_by_sku, costs_by_base_sku):
@@ -637,67 +700,51 @@ def get_inventory(product_ids: list) -> dict:
     return inventory
 
 
-def fetch_purchase_orders() -> list:
-    """Fetch all purchase orders from BaseLinker warehouse control"""
-    all_pos = []
-    date_from = 1704067200  # Jan 1, 2024
-    date_to = int(time.time())
-    page = 0
+def find_po_items_for_sku(sku, po_items_by_sku):
+    """Find purchase order items for a SKU using progressive matching.
+    Same strategy as find_cost_for_sku — exact, then base, then prefix.
+    """
+    if not sku or not po_items_by_sku:
+        return []
 
-    while True:
-        result = call_baselinker('getInventoryPurchaseOrders', {
-            'date_from': date_from,
-            'date_to': date_to,
-            'page': page
-        })
+    sku_upper = sku.strip().upper()
 
-        if "error" in result:
-            print(f"PO fetch error: {result.get('error')}")
-            break
+    # 1. Exact match
+    if sku_upper in po_items_by_sku:
+        return po_items_by_sku[sku_upper]
 
-        orders = result.get('purchase_orders', [])
-        if not orders:
-            break
+    # 2. Progressive base SKU matching
+    parts = sku_upper.split('-')
+    for i in range(len(parts) - 1, 0, -1):
+        candidate = '-'.join(parts[:i])
+        if candidate in po_items_by_sku:
+            return po_items_by_sku[candidate]
 
-        all_pos.extend(orders)
-        page += 1
-        time.sleep(0.6)
+    # 3. Prefix match
+    for i in range(len(parts) - 1, 0, -1):
+        candidate = '-'.join(parts[:i])
+        for key, items in po_items_by_sku.items():
+            if key.startswith(candidate + '-'):
+                return items
 
-        # Stop if fewer than 100 results (last page)
-        if len(orders) < 100:
-            break
-
-    return all_pos
+    return []
 
 
-def fetch_purchase_order_items(order_id: int) -> list:
-    """Fetch items for a specific purchase order (paginated, 100 per page)"""
-    all_items = []
-    page = 0
-
-    while True:
-        params = {'order_id': order_id}
-        if page > 0:
-            params['page'] = page
-
-        result = call_baselinker('getInventoryPurchaseOrderItems', params)
-
-        if "error" in result:
-            break
-
-        items = result.get('items', [])
-        if not items:
-            break
-
-        all_items.extend(items)
-        page += 1
-
-        if len(items) < 100:
-            break
-
-        time.sleep(0.3)
-
-    return all_items
+def _sku_matches_set(sku, sku_set, base_skus):
+    """Check if a product SKU matches any SKU in the PO's set (progressive matching)."""
+    if not sku:
+        return False
+    sku_upper = sku.strip().upper()
+    # Exact match
+    if sku_upper in sku_set:
+        return True
+    # Progressive base matching: S-91-451 → check S-91-451, S-91, S against base_skus
+    parts = sku_upper.split('-')
+    for i in range(len(parts), 0, -1):
+        candidate = '-'.join(parts[:i])
+        if candidate in base_skus:
+            return True
+    return False
 
 
 def filter_products(products: list, category: str = "", po: str = "", search: str = "") -> list:
@@ -709,9 +756,15 @@ def filter_products(products: list, category: str = "", po: str = "", search: st
 
     if po:
         po_data = next((p for p in cache.get("purchase_orders", []) if str(p.get('po_id')) == po), None)
-        if po_data and po_data.get('product_ids'):
-            pid_set = set(str(pid) for pid in po_data['product_ids'])
-            filtered = [p for p in filtered if str(p.get('bl_product_id')) in pid_set]
+        if po_data and po_data.get('product_skus'):
+            sku_set = set(s.upper() for s in po_data['product_skus'])
+            # Also build base SKU set for matching (e.g., S-91 matches S-91-451)
+            base_skus = set()
+            for s in sku_set:
+                parts = s.split('-')
+                for i in range(1, len(parts) + 1):
+                    base_skus.add('-'.join(parts[:i]))
+            filtered = [p for p in filtered if _sku_matches_set(p.get('sku', ''), sku_set, base_skus)]
 
     if search:
         variant_match = re.search(r'[?&]variant=(\d+)', search)
@@ -745,7 +798,8 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
         inv_info = inventory.get(bl_pid, {})
         revenue = round(data['total_revenue'], 2)
         total_revenue += revenue
-        product_pos = po_items_map.get(bl_pid, []) if po_items_map else []
+        # Match POs by SKU (from import sheet tabs), not by BaseLinker product ID
+        product_pos = find_po_items_for_sku(data['sku'], po_items_map) if po_items_map else []
         if product_pos:
             po_match_count += 1
 
@@ -837,10 +891,12 @@ def refresh_data():
         order_sources = fetch_order_sources()
         cache["order_sources"] = order_sources
 
-        # Load costs from Google Sheets
-        print("Loading costs from import sheets...")
-        costs = load_costs_from_import_sheet()
-        cache["costs"] = costs
+        # Load costs AND purchase orders from Google Sheets import tabs
+        # Each tab = one invoice. Tab name = invoice name.
+        print("Loading costs and purchase orders from import sheets...")
+        costs_by_sku, costs_by_base_sku, po_list, po_items_by_sku = load_costs_and_pos_from_import_sheet()
+        cache["costs"] = (costs_by_sku, costs_by_base_sku)
+        cache["po_items_by_sku"] = po_items_by_sku
 
         # Fetch orders and aggregate sales
         orders = fetch_all_wyslane_orders()
@@ -869,53 +925,8 @@ def refresh_data():
         # Cache inventory for reuse
         cache["inventory"] = inventory
 
-        # Fetch purchase orders
-        print("Fetching purchase orders...")
-        pos = fetch_purchase_orders()
-        po_items_map = {}  # product_id -> [PO references]
-        po_list = []
-
-        for po in pos:
-            po_id = po.get('id')
-            if not po_id:
-                continue
-
-            doc_number = po.get('document_number', f'PO-{po_id}')
-            items = fetch_purchase_order_items(po_id)
-            time.sleep(0.3)
-
-            po_entry = {
-                'po_id': po_id,
-                'document_number': doc_number,
-                'status': po.get('status', 0),
-                'date': po.get('date_created', ''),
-                'items_count': po.get('items_count', len(items)),
-                'total_quantity': po.get('total_quantity', 0),
-                'total_cost': str(po.get('total_cost', '0')),
-                'product_ids': []
-            }
-
-            for item in items:
-                pid = str(item.get('product_id', ''))
-                if pid and pid != '0':
-                    po_entry['product_ids'].append(pid)
-                    if pid not in po_items_map:
-                        po_items_map[pid] = []
-                    po_items_map[pid].append({
-                        'po_id': po_id,
-                        'document_number': doc_number,
-                        'quantity_ordered': item.get('quantity', 0),
-                        'completed_quantity': item.get('completed_quantity', 0),
-                        'item_cost': float(item.get('item_cost', 0)),
-                        'product_sku': item.get('product_sku', '')
-                    })
-
-            po_list.append(po_entry)
-
-        print(f"Fetched {len(po_list)} purchase orders, {len(po_items_map)} unique product mappings")
-
-        # Cache PO items map for reuse
-        cache["po_items_map"] = po_items_map
+        # PO items map for build_response (SKU-keyed, from import sheets)
+        po_items_map = po_items_by_sku
 
         # Build full response using helper
         response_data = build_response(orders, inventory, po_items_map, order_sources)
@@ -1004,7 +1015,7 @@ async def get_sales(
     # so "Yesterday" shows all 12 orders, not just 2 shipped ones
     raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
     inventory = cache.get("inventory") or {}
-    po_items_map = cache.get("po_items_map") or {}
+    po_items_map = cache.get("po_items_by_sku") or {}
     order_sources = cache.get("order_sources", {})
 
     if raw_orders is None:
@@ -1158,7 +1169,7 @@ async def download_excel(
         # Use ALL-status orders for date-filtered views (same as /api/sales)
         raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
         inventory = cache.get("inventory") or {}
-        po_items_map = cache.get("po_items_map") or {}
+        po_items_map = cache.get("po_items_by_sku") or {}
         order_sources = cache.get("order_sources", {})
 
         if raw_orders is None:
