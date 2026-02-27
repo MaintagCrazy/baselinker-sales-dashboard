@@ -325,17 +325,26 @@ def load_costs_and_pos_from_import_sheet():
                 if len(row) <= max(model_col, cost_col):
                     continue
 
-                model = row[model_col].strip().upper() if model_col < len(row) else ""
+                model_raw = row[model_col].strip() if model_col < len(row) else ""
                 color = row[color_col].strip().upper() if color_col and color_col < len(row) else ""
                 cost_str = row[cost_col].strip() if cost_col < len(row) else ""
                 qty_str = row[qty_col].strip() if qty_col is not None and qty_col < len(row) else "1"
                 bl_variant = row[bl_variant_col].strip() if bl_variant_col is not None and bl_variant_col < len(row) else ""
 
+                # Clean model: strip Chinese chars and other non-ASCII, normalize
+                # e.g. "S-91定色451" → "S-91" (Chinese chars removed, trailing digits
+                # belong to color column not model)
+                model = re.sub(r'[^\x00-\x7F]+', '', model_raw).strip().upper()
+                # If color column has a value and model ends with that color, strip it
+                # e.g. model="S-91451" color="451" → model="S-91"
+                if color and model.endswith(color):
+                    model = model[:-len(color)].rstrip('-')
+
                 if not model or not cost_str:
                     continue
 
                 try:
-                    cost = float(cost_str.replace('zł', '').replace('PLN', '').replace(',', '').strip())
+                    cost = float(cost_str.replace('zł', '').replace('PLN', '').replace('$', '').replace(',', '').strip())
                 except:
                     continue
 
@@ -1102,6 +1111,28 @@ async def get_activity():
         }
     except Exception as e:
         return {"error": str(e), "logs": []}
+
+
+@app.get("/api/debug/costs")
+async def debug_costs():
+    """Debug: show cost and PO loading status"""
+    costs = cache.get("costs", ({}, {}))
+    po_items = cache.get("po_items_by_sku", {})
+    pos = cache.get("purchase_orders", [])
+    return {
+        "google_credentials_set": bool(GOOGLE_CREDENTIALS_JSON),
+        "import_sheet_id": IMPORT_SHEET_ID,
+        "costs_by_sku_count": len(costs[0]) if costs else 0,
+        "costs_by_base_sku_count": len(costs[1]) if costs else 0,
+        "po_items_by_sku_count": len(po_items),
+        "purchase_orders_count": len(pos),
+        "purchase_orders": [
+            {"name": po.get("document_number"), "items": po.get("items_count"), "skus": po.get("product_skus", [])[:5]}
+            for po in pos[:10]
+        ],
+        "sample_costs": dict(list((costs[0] if costs else {}).items())[:10]),
+        "sample_po_skus": list(po_items.keys())[:20],
+    }
 
 
 @app.get("/api/debug/orders")
