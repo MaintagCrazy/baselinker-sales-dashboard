@@ -417,7 +417,7 @@
         <button class="time-btn" data-preset="yesterday" onclick="selectPreset('yesterday')" data-i18n="yesterday">Yesterday</button>
         <button class="time-btn" data-preset="7d" onclick="selectPreset('7d')" data-i18n="last7Days">Last 7 Days</button>
         <button class="time-btn" data-preset="30d" onclick="selectPreset('30d')" data-i18n="last30Days">Last 30 Days</button>
-        <button class="time-btn" data-preset="quarter" onclick="selectPreset('quarter')" data-i18n="lastQuarter">Last Quarter</button>
+        <button class="time-btn" data-preset="month" onclick="selectPreset('month')" data-i18n="thisMonth">This Month</button>
         <button class="time-btn" data-preset="custom" onclick="selectPreset('custom')" data-i18n="custom">Custom</button>
         <div class="date-range" id="date-range">
             <span class="date-label" data-i18n="from">From</span>
@@ -468,7 +468,7 @@
                 <button class="mobile-preset-btn" data-preset="yesterday" onclick="mobileSelectPreset('yesterday')" data-i18n="yesterday">Yesterday</button>
                 <button class="mobile-preset-btn" data-preset="7d" onclick="mobileSelectPreset('7d')" data-i18n="last7Days">Last 7 Days</button>
                 <button class="mobile-preset-btn" data-preset="30d" onclick="mobileSelectPreset('30d')" data-i18n="last30Days">Last 30 Days</button>
-                <button class="mobile-preset-btn" data-preset="quarter" onclick="mobileSelectPreset('quarter')" data-i18n="lastQuarter">Last Quarter</button>
+                <button class="mobile-preset-btn" data-preset="month" onclick="mobileSelectPreset('month')" data-i18n="thisMonth">This Month</button>
             </div>
             <div class="mobile-custom-range">
                 <label data-i18n="from">From</label>
@@ -580,7 +580,7 @@
                 yesterday: 'Yesterday',
                 last7Days: 'Last 7 Days',
                 last30Days: 'Last 30 Days',
-                lastQuarter: 'Last Quarter',
+                thisMonth: 'This Month',
                 custom: 'Custom',
                 from: 'From',
                 to: 'To',
@@ -649,7 +649,7 @@
                 yesterday: 'H\u00f4m qua',
                 last7Days: '7 ng\u00e0y qua',
                 last30Days: '30 ng\u00e0y qua',
-                lastQuarter: 'Qu\u00fd tr\u01b0\u1edbc',
+                thisMonth: 'Th\u00e1ng n\u00e0y',
                 custom: 'T\u00f9y ch\u1ecdn',
                 from: 'T\u1eeb',
                 to: '\u0110\u1ebfn',
@@ -810,9 +810,9 @@
                     activeDateTo = today;
                     break;
                 }
-                case 'quarter': {
+                case 'month': {
                     const d = new Date(now);
-                    d.setMonth(d.getMonth() - 3);
+                    d.setDate(1); // first day of current month
                     activeDateFrom = formatDate(d);
                     activeDateTo = today;
                     break;
@@ -912,7 +912,7 @@
         // ========== FINANCIALS ==========
         function updateFinancials() {
             if (!salesData) return;
-            const fmtPLN = (v) => v.toLocaleString('pl-PL', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+            const fmtPLN = (v) => v.toLocaleString('pl-PL', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
             const revEl = document.getElementById('fin-revenue');
             const netEl = document.getElementById('fin-net-revenue');

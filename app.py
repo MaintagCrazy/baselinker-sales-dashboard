@@ -334,7 +334,8 @@ def load_costs_from_import_sheet():
 
 
 def find_cost_for_sku(sku, costs_by_sku, costs_by_base_sku):
-    """Find cost for a SKU using 3-tier matching.
+    """Find cost for a SKU using multi-tier matching.
+    Handles SKUs like S-91-451, DR2523-SZARY, DT-244-Czarny.
     Returns (cost, match_type).
     """
     if not sku:
@@ -342,19 +343,28 @@ def find_cost_for_sku(sku, costs_by_sku, costs_by_base_sku):
 
     sku_upper = sku.strip().upper()
 
-    # 1. Exact match
+    # 1. Exact match (full SKU including color suffix)
     if sku_upper in costs_by_sku:
         return costs_by_sku[sku_upper], 'exact'
 
-    # 2. Base SKU match (part before first dash)
-    base_sku = sku_upper.split('-')[0] if '-' in sku_upper else sku_upper
-    if base_sku in costs_by_base_sku:
-        return costs_by_base_sku[base_sku], 'base'
+    # 2. Progressive base SKU matching — try removing segments from the right
+    # e.g. S-91-451 → try "S-91-451", "S-91", "S" against costs_by_base_sku
+    parts = sku_upper.split('-')
+    for i in range(len(parts) - 1, 0, -1):
+        candidate = '-'.join(parts[:i])
+        if candidate in costs_by_base_sku:
+            return costs_by_base_sku[candidate], 'base'
 
-    # 3. Prefix match (any key starting with base_sku-)
-    for key, cost in costs_by_sku.items():
-        if key.startswith(base_sku + '-'):
-            return cost, 'prefix'
+    # Also try the full SKU as a base key (no-dash SKUs)
+    if sku_upper in costs_by_base_sku:
+        return costs_by_base_sku[sku_upper], 'base'
+
+    # 3. Prefix match — find any cost key that starts with a base candidate
+    for i in range(len(parts) - 1, 0, -1):
+        candidate = '-'.join(parts[:i])
+        for key, cost in costs_by_sku.items():
+            if key.startswith(candidate + '-'):
+                return cost, 'prefix'
 
     return 0, None
 
