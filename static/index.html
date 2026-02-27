@@ -29,6 +29,21 @@
         .btn-secondary { background: #28a745; color: white; }
         .btn-secondary:hover { background: #218838; }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* Time Frame Bar */
+        .time-bar { background: white; padding: 12px 30px; border-bottom: 1px solid #e0e0e0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .time-bar-label { font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.3px; margin-right: 4px; }
+        .time-btn { padding: 6px 14px; border: 1px solid #d0d0d0; border-radius: 20px; background: white; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .time-btn.active { background: #4472C4; color: white; border-color: #4472C4; }
+        .time-btn:hover:not(.active) { background: #f0f4ff; border-color: #4472C4; }
+        .date-range { display: none; gap: 8px; align-items: center; margin-left: 8px; }
+        .date-range.visible { display: flex; }
+        .date-range input[type="date"] { padding: 6px 10px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 13px; }
+        .date-range input[type="date"]:focus { outline: none; border-color: #4472C4; box-shadow: 0 0 0 2px rgba(68,114,196,0.15); }
+        .date-range .date-label { font-size: 12px; color: #666; }
+        .date-range .apply-btn { padding: 6px 14px; background: #4472C4; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; transition: background 0.2s; }
+        .date-range .apply-btn:hover { background: #3661b0; }
+
         .filter-bar { background: white; padding: 12px 30px; border-bottom: 1px solid #e0e0e0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
         .filter-bar select, .filter-bar input { padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 13px; background: white; min-width: 180px; }
         .filter-bar select:focus, .filter-bar input:focus { outline: none; border-color: #4472C4; box-shadow: 0 0 0 2px rgba(68,114,196,0.15); }
@@ -80,6 +95,9 @@
             .header-stats { gap: 10px; }
             .controls { flex-direction: column; align-items: stretch; }
             .buttons { justify-content: center; }
+            .time-bar { padding: 10px 15px; gap: 6px; }
+            .time-btn { padding: 5px 10px; font-size: 12px; }
+            .date-range { flex-wrap: wrap; margin-left: 0; margin-top: 4px; }
             .filter-bar { flex-direction: column; }
             .filter-bar select, .filter-bar input { min-width: 100%; }
             .product-name { max-width: 200px; }
@@ -130,6 +148,26 @@
             </button>
         </div>
     </div>
+
+    <!-- Time Frame Bar -->
+    <div class="time-bar" id="time-bar">
+        <span class="time-bar-label" data-i18n="timeFrame">Time Frame</span>
+        <button class="time-btn active" data-preset="all" onclick="selectPreset('all')" data-i18n="allTime">All Time</button>
+        <button class="time-btn" data-preset="today" onclick="selectPreset('today')" data-i18n="today">Today</button>
+        <button class="time-btn" data-preset="yesterday" onclick="selectPreset('yesterday')" data-i18n="yesterday">Yesterday</button>
+        <button class="time-btn" data-preset="7d" onclick="selectPreset('7d')" data-i18n="last7Days">Last 7 Days</button>
+        <button class="time-btn" data-preset="30d" onclick="selectPreset('30d')" data-i18n="last30Days">Last 30 Days</button>
+        <button class="time-btn" data-preset="quarter" onclick="selectPreset('quarter')" data-i18n="lastQuarter">Last Quarter</button>
+        <button class="time-btn" data-preset="custom" onclick="selectPreset('custom')" data-i18n="custom">Custom</button>
+        <div class="date-range" id="date-range">
+            <span class="date-label" data-i18n="from">From</span>
+            <input type="date" id="date-from">
+            <span class="date-label" data-i18n="to">To</span>
+            <input type="date" id="date-to">
+            <button class="apply-btn" onclick="applyCustomRange()" data-i18n="apply">Apply</button>
+        </div>
+    </div>
+
     <div class="filter-bar" id="filter-bar">
         <div class="filter-group">
             <label data-i18n="categoryLabel">Category</label>
@@ -202,7 +240,19 @@
                 loadingData: 'Loading sales data...',
                 noData: 'No data available',
                 errorLoading: 'Error loading data',
-                tryRefresh: 'Please try refreshing the page.'
+                tryRefresh: 'Please try refreshing the page.',
+                // Time frame i18n
+                timeFrame: 'Time Frame',
+                allTime: 'All Time',
+                today: 'Today',
+                yesterday: 'Yesterday',
+                last7Days: 'Last 7 Days',
+                last30Days: 'Last 30 Days',
+                lastQuarter: 'Last Quarter',
+                custom: 'Custom',
+                from: 'From',
+                to: 'To',
+                apply: 'Apply'
             },
             vi: {
                 dashboardTitle: 'B\u1ea3ng \u0111i\u1ec1u khi\u1ec3n BaseLinker',
@@ -246,7 +296,19 @@
                 loadingData: '\u0110ang t\u1ea3i d\u1eef li\u1ec7u...',
                 noData: 'Kh\u00f4ng c\u00f3 d\u1eef li\u1ec7u',
                 errorLoading: 'L\u1ed7i t\u1ea3i d\u1eef li\u1ec7u',
-                tryRefresh: 'Vui l\u00f2ng t\u1ea3i l\u1ea1i trang.'
+                tryRefresh: 'Vui l\u00f2ng t\u1ea3i l\u1ea1i trang.',
+                // Time frame i18n
+                timeFrame: 'Khung th\u1eddi gian',
+                allTime: 'T\u1ea5t c\u1ea3',
+                today: 'H\u00f4m nay',
+                yesterday: 'H\u00f4m qua',
+                last7Days: '7 ng\u00e0y qua',
+                last30Days: '30 ng\u00e0y qua',
+                lastQuarter: 'Qu\u00fd tr\u01b0\u1edbc',
+                custom: 'T\u00f9y ch\u1ecdn',
+                from: 'T\u1eeb',
+                to: '\u0110\u1ebfn',
+                apply: '\u00c1p d\u1ee5ng'
             }
         };
 
@@ -282,6 +344,104 @@
             if (searchInput) searchInput.placeholder = t('searchPlaceholder');
         }
 
+        // ========== TIME FRAME STATE ==========
+        let activePreset = 'all';
+        let activeDateFrom = '';
+        let activeDateTo = '';
+
+        function formatDate(d) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function selectPreset(preset) {
+            activePreset = preset;
+            const now = new Date();
+            const today = formatDate(now);
+
+            switch (preset) {
+                case 'all':
+                    activeDateFrom = '';
+                    activeDateTo = '';
+                    break;
+                case 'today':
+                    activeDateFrom = today;
+                    activeDateTo = today;
+                    break;
+                case 'yesterday': {
+                    const y = new Date(now);
+                    y.setDate(y.getDate() - 1);
+                    activeDateFrom = formatDate(y);
+                    activeDateTo = formatDate(y);
+                    break;
+                }
+                case '7d': {
+                    const d = new Date(now);
+                    d.setDate(d.getDate() - 7);
+                    activeDateFrom = formatDate(d);
+                    activeDateTo = today;
+                    break;
+                }
+                case '30d': {
+                    const d = new Date(now);
+                    d.setDate(d.getDate() - 30);
+                    activeDateFrom = formatDate(d);
+                    activeDateTo = today;
+                    break;
+                }
+                case 'quarter': {
+                    const d = new Date(now);
+                    d.setMonth(d.getMonth() - 3);
+                    activeDateFrom = formatDate(d);
+                    activeDateTo = today;
+                    break;
+                }
+                case 'custom':
+                    // Show date inputs, don't fetch yet
+                    updateTimeBarUI();
+                    return;
+            }
+
+            updateTimeBarUI();
+            fetchSalesData();
+        }
+
+        function applyCustomRange() {
+            const fromInput = document.getElementById('date-from').value;
+            const toInput = document.getElementById('date-to').value;
+            if (fromInput) activeDateFrom = fromInput;
+            if (toInput) activeDateTo = toInput;
+            if (activeDateFrom || activeDateTo) {
+                fetchSalesData();
+            }
+        }
+
+        function updateTimeBarUI() {
+            // Highlight active preset button
+            document.querySelectorAll('.time-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-preset') === activePreset);
+            });
+
+            // Show/hide custom date range inputs
+            const dateRange = document.getElementById('date-range');
+            if (activePreset === 'custom') {
+                dateRange.classList.add('visible');
+                // Set default dates if empty
+                if (!document.getElementById('date-from').value) {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 7);
+                    document.getElementById('date-from').value = formatDate(d);
+                }
+                if (!document.getElementById('date-to').value) {
+                    document.getElementById('date-to').value = formatDate(new Date());
+                }
+            } else {
+                dateRange.classList.remove('visible');
+            }
+        }
+
         // ========== DATA ==========
         let salesData = null;
         let purchaseOrders = [];
@@ -294,8 +454,14 @@
 
         async function fetchSalesData() {
             try {
+                let url = '/api/sales';
+                const params = new URLSearchParams();
+                if (activeDateFrom) params.set('date_from', activeDateFrom);
+                if (activeDateTo) params.set('date_to', activeDateTo);
+                if (params.toString()) url += '?' + params.toString();
+
                 const [salesResp, poResp] = await Promise.all([
-                    fetch('/api/sales'),
+                    fetch(url),
                     fetch('/api/purchase-orders')
                 ]);
                 if (!salesResp.ok) throw new Error('Failed to fetch data');
@@ -619,12 +785,15 @@
             if (cat) params.set('category', cat);
             if (po) params.set('po', po);
             if (search) params.set('search', search);
+            if (activeDateFrom) params.set('date_from', activeDateFrom);
+            if (activeDateTo) params.set('date_to', activeDateTo);
             const qs = params.toString();
             window.location.href = '/api/download' + (qs ? '?' + qs : '');
         }
 
         // ========== INIT ==========
         applyLanguage();
+        updateTimeBarUI();
         fetchSalesData();
         setInterval(fetchSalesData, 300000);
     </script>

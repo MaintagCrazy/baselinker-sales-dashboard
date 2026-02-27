@@ -2,7 +2,7 @@
 """
 BaseLinker Sales Dashboard - FastAPI Application
 Displays all sold products with real-time updates, Excel export, and activity tracking
-Enhanced: category detection, purchase orders, revenue tracking, sales channels
+Enhanced: category detection, purchase orders, revenue tracking, sales channels, time frame filtering
 """
 
 import os
@@ -34,7 +34,10 @@ cache = {
     "last_updated": None,
     "next_refresh": None,
     "is_refreshing": False,
-    "purchase_orders": []
+    "purchase_orders": [],
+    "raw_orders": None,
+    "inventory": None,
+    "po_items_map": None,
 }
 
 REFRESH_INTERVAL = 3600  # 1 hour in seconds
@@ -412,6 +415,48 @@ def filter_products(products: list, category: str = "", po: str = "", search: st
     return filtered
 
 
+def build_response(orders: list, inventory: dict, po_items_map: dict) -> dict:
+    """Build product list from orders + inventory + PO data. Reusable for date-filtered views."""
+    sales_data = aggregate_sales(orders)
+
+    products = []
+    total_revenue = 0.0
+    po_match_count = 0
+
+    for variant_key, data in sales_data.items():
+        bl_pid = data['bl_product_id']
+        inv_info = inventory.get(bl_pid, {})
+        revenue = round(data['total_revenue'], 2)
+        total_revenue += revenue
+        product_pos = po_items_map.get(bl_pid, []) if po_items_map else []
+        if product_pos:
+            po_match_count += 1
+
+        products.append({
+            'image_url': inv_info.get('image_url', ''),
+            'product_name': data['product_name'],
+            'sku': data['sku'],
+            'units_sold': data['units_sold'],
+            'current_stock': inv_info.get('stock', 0),
+            'total_revenue': revenue,
+            'sales_by_channel': data['sales_by_channel'],
+            'category': determine_category(data['product_name']),
+            'shopify_variant_id': inv_info.get('shopify_variant_id', ''),
+            'bl_product_id': bl_pid,
+            'purchase_orders': product_pos
+        })
+
+    products.sort(key=lambda x: x['units_sold'], reverse=True)
+
+    return {
+        "total_variants": len(products),
+        "total_units_sold": sum(p['units_sold'] for p in products),
+        "total_orders": len(orders),
+        "total_revenue": round(total_revenue, 2),
+        "products": products
+    }
+
+
 def refresh_data():
     """Fetch fresh data from BaseLinker"""
     if cache["is_refreshing"]:
@@ -422,9 +467,16 @@ def refresh_data():
     try:
         # Fetch orders and aggregate sales
         orders = fetch_all_wyslane_orders()
+
+        # Cache raw orders for date-filtered re-aggregation
+        cache["raw_orders"] = orders
+
         sales_data = aggregate_sales(orders)
         product_ids = [d['bl_product_id'] for d in sales_data.values() if d['bl_product_id']]
         inventory = get_inventory(product_ids)
+
+        # Cache inventory for reuse
+        cache["inventory"] = inventory
 
         # Fetch purchase orders
         print("Fetching purchase orders...")
@@ -471,52 +523,21 @@ def refresh_data():
 
         print(f"Fetched {len(po_list)} purchase orders, {len(po_items_map)} unique product mappings")
 
-        # Build final products list
-        products = []
-        total_revenue = 0.0
-        po_match_count = 0
+        # Cache PO items map for reuse
+        cache["po_items_map"] = po_items_map
 
-        for variant_key, data in sales_data.items():
-            bl_pid = data['bl_product_id']
-            inv_info = inventory.get(bl_pid, {})
-            revenue = round(data['total_revenue'], 2)
-            total_revenue += revenue
-            product_pos = po_items_map.get(bl_pid, [])
-            if product_pos:
-                po_match_count += 1
-
-            products.append({
-                'image_url': inv_info.get('image_url', ''),
-                'product_name': data['product_name'],
-                'sku': data['sku'],
-                'units_sold': data['units_sold'],
-                'current_stock': inv_info.get('stock', 0),
-                'total_revenue': revenue,
-                'sales_by_channel': data['sales_by_channel'],
-                'category': determine_category(data['product_name']),
-                'shopify_variant_id': inv_info.get('shopify_variant_id', ''),
-                'bl_product_id': bl_pid,
-                'purchase_orders': product_pos
-            })
-
-        products.sort(key=lambda x: x['units_sold'], reverse=True)
-        print(f"Built {len(products)} products, {po_match_count} matched to POs")
+        # Build full response using helper
+        response_data = build_response(orders, inventory, po_items_map)
 
         now = datetime.now(timezone.utc)
-        cache["data"] = {
-            "total_variants": len(products),
-            "total_units_sold": sum(p['units_sold'] for p in products),
-            "total_orders": len(orders),
-            "total_revenue": round(total_revenue, 2),
-            "products": products
-        }
+        cache["data"] = response_data
         cache["last_updated"] = now.isoformat()
         cache["next_refresh"] = (now + timedelta(seconds=REFRESH_INTERVAL)).isoformat()
         cache["purchase_orders"] = po_list
 
         # Log to database
         log_activity("refresh", cache["data"])
-        save_sales_snapshot(products)
+        save_sales_snapshot(response_data["products"])
 
     except Exception as e:
         print(f"Error refreshing data: {e}")
@@ -572,15 +593,54 @@ async def health_check():
 
 
 @app.get("/api/sales")
-async def get_sales():
+async def get_sales(
+    date_from: str = Query("", description="Start date YYYY-MM-DD"),
+    date_to: str = Query("", description="End date YYYY-MM-DD"),
+):
     if cache["data"] is None:
         return JSONResponse(status_code=503, content={"error": "Data not loaded yet. Please wait..."})
+
+    # No date params -> return cached "all time" data (fast path, no regression)
+    if not date_from and not date_to:
+        return {
+            "last_updated": cache["last_updated"],
+            "next_refresh": cache["next_refresh"],
+            "is_refreshing": cache["is_refreshing"],
+            **cache["data"]
+        }
+
+    # With date params -> filter raw orders and re-aggregate
+    raw_orders = cache.get("raw_orders")
+    inventory = cache.get("inventory") or {}
+    po_items_map = cache.get("po_items_map") or {}
+
+    if raw_orders is None:
+        return JSONResponse(status_code=503, content={"error": "Raw order data not available. Please wait for refresh."})
+
+    # Parse date boundaries to unix timestamps (start of date_from, end of date_to)
+    try:
+        ts_from = int(datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()) if date_from else 0
+        # date_to end of day = next day midnight - 1 second
+        ts_to = int((datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)).timestamp()) if date_to else int(time.time()) + 86400
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "Invalid date format. Use YYYY-MM-DD."})
+
+    # Filter orders by date_confirmed (or date_add as fallback)
+    filtered_orders = []
+    for order in raw_orders:
+        order_ts = order.get("date_confirmed") or order.get("date_add", 0)
+        if isinstance(order_ts, (int, float)) and ts_from <= order_ts < ts_to:
+            filtered_orders.append(order)
+
+    response_data = build_response(filtered_orders, inventory, po_items_map)
 
     return {
         "last_updated": cache["last_updated"],
         "next_refresh": cache["next_refresh"],
         "is_refreshing": cache["is_refreshing"],
-        **cache["data"]
+        "date_from": date_from,
+        "date_to": date_to,
+        **response_data
     }
 
 
@@ -635,13 +695,38 @@ async def get_activity():
 async def download_excel(
     category: str = Query("", description="Filter by category"),
     po: str = Query("", description="Filter by purchase order ID"),
-    search: str = Query("", description="Search text or Shopify URL")
+    search: str = Query("", description="Search text or Shopify URL"),
+    date_from: str = Query("", description="Start date YYYY-MM-DD"),
+    date_to: str = Query("", description="End date YYYY-MM-DD"),
 ):
     if cache["data"] is None:
         return JSONResponse(status_code=503, content={"error": "Data not loaded yet"})
 
-    # Apply same filters as frontend
-    products = filter_products(cache["data"]["products"], category, po, search)
+    # Determine source products based on date filter
+    if date_from or date_to:
+        raw_orders = cache.get("raw_orders")
+        inventory = cache.get("inventory") or {}
+        po_items_map = cache.get("po_items_map") or {}
+
+        if raw_orders is None:
+            return JSONResponse(status_code=503, content={"error": "Raw order data not available"})
+
+        try:
+            ts_from = int(datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()) if date_from else 0
+            ts_to = int((datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)).timestamp()) if date_to else int(time.time()) + 86400
+        except ValueError:
+            return JSONResponse(status_code=400, content={"error": "Invalid date format. Use YYYY-MM-DD."})
+
+        filtered_orders = [
+            o for o in raw_orders
+            if ts_from <= (o.get("date_confirmed") or o.get("date_add", 0)) < ts_to
+        ]
+        source_data = build_response(filtered_orders, inventory, po_items_map)
+    else:
+        source_data = cache["data"]
+
+    # Apply category/PO/search filters on top
+    products = filter_products(source_data["products"], category, po, search)
 
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -661,6 +746,9 @@ async def download_excel(
 
     # Show active filters in subtitle
     filter_parts = []
+    if date_from or date_to:
+        date_label = f"{date_from or 'start'} to {date_to or 'now'}"
+        filter_parts.append(f"Period: {date_label}")
     if category:
         filter_parts.append(f"Category: {category}")
     if po:
