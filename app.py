@@ -391,6 +391,10 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
                           f"(median={median_price:.2f}, threshold={median_price*10:.2f})")
                     val['total_revenue'] = clean_revenue
 
+        # Floor units_sold and revenue at 0 — negative means returns exceeded sales
+        val['units_sold'] = max(0, val['units_sold'])
+        val['total_revenue'] = max(0.0, val['total_revenue'])
+
         val['sales_by_channel'] = dict(val['sales_by_channel'])
         result[key] = val
 
@@ -540,6 +544,8 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
     products = []
     total_revenue = 0.0
     po_match_count = 0
+    global_channel_units = defaultdict(int)
+    global_channel_revenue = defaultdict(float)
 
     for variant_key, data in sales_data.items():
         bl_pid = data['bl_product_id']
@@ -550,12 +556,18 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
         if product_pos:
             po_match_count += 1
 
+        # Floor units_sold at 0 (negative quantities from returns get netted)
+        units_sold = max(0, data['units_sold'])
+
+        # Stock: keep raw value but flag negative
+        raw_stock = inv_info.get('stock', 0)
+
         products.append({
             'image_url': inv_info.get('image_url', ''),
             'product_name': data['product_name'],
             'sku': data['sku'],
-            'units_sold': data['units_sold'],
-            'current_stock': inv_info.get('stock', 0),
+            'units_sold': units_sold,
+            'current_stock': raw_stock,
             'total_revenue': revenue,
             'sales_by_channel': data['sales_by_channel'],
             'category': determine_category(data['product_name']),
@@ -564,13 +576,34 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
             'purchase_orders': product_pos
         })
 
+        # Accumulate global channel breakdown
+        for channel, qty in data['sales_by_channel'].items():
+            global_channel_units[channel] += max(0, qty)
+            # Estimate revenue per channel proportionally
+        # Revenue by channel: distribute proportionally by qty
+        total_qty = sum(data['sales_by_channel'].values())
+        if total_qty > 0:
+            for channel, qty in data['sales_by_channel'].items():
+                if qty > 0:
+                    global_channel_revenue[channel] += revenue * (qty / total_qty)
+
     products.sort(key=lambda x: x['units_sold'], reverse=True)
+
+    # Build sorted channel breakdown (highest units first)
+    channel_breakdown = []
+    for ch in sorted(global_channel_units.keys(), key=lambda c: global_channel_units[c], reverse=True):
+        channel_breakdown.append({
+            "channel": ch,
+            "units": global_channel_units[ch],
+            "revenue": round(global_channel_revenue.get(ch, 0), 2)
+        })
 
     return {
         "total_variants": len(products),
         "total_units_sold": sum(p['units_sold'] for p in products),
         "total_orders": len(orders),
         "total_revenue": round(total_revenue, 2),
+        "channel_breakdown": channel_breakdown,
         "products": products
     }
 
