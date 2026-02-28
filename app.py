@@ -3,6 +3,7 @@
 BaseLinker Sales Dashboard - FastAPI Application
 Displays all sold products with real-time updates, Excel export, and activity tracking
 Enhanced: category detection, purchase orders, revenue tracking, sales channels, time frame filtering
+Authentication: PIN/email login, admin panel, user sessions, activity logging
 """
 
 import os
@@ -11,6 +12,10 @@ import json
 import time
 import asyncio
 import requests
+import uuid
+import secrets
+import jwt
+import bcrypt
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import defaultdict
@@ -21,9 +26,11 @@ from io import BytesIO
 from typing import Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Response, BackgroundTasks, Query
+from fastapi import FastAPI, Response, BackgroundTasks, Query, Depends, HTTPException, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from pydantic import BaseModel
 
 # Configuration from environment variables
 BASELINKER_API_KEY = os.getenv("BASELINKER_API_KEY", "")
@@ -36,6 +43,12 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
 IMPORT_SHEET_ID = os.getenv("IMPORT_SHEET_ID", "1parHGahhvO6qnAnsvu4MNq18yl3M53Dzs6GCjry1yMg")
 FALLBACK_MARKUP_GROSS = 3.444  # cost = gross_price / 3.444 (2.8x net markup + 23% VAT)
+
+# JWT Configuration
+JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_hex(32))
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_HOURS = 72
+security = HTTPBearer(auto_error=False)
 
 # Currency conversion — BaseLinker returns price_brutto in the ORDER's currency
 EXCHANGE_RATES_TO_PLN = {
@@ -131,6 +144,73 @@ def init_database():
                 current_stock INT
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                display_name VARCHAR(255),
+                pin_hash VARCHAR(255),
+                password_hash VARCHAR(255),
+                role VARCHAR(20) DEFAULT 'user',
+                is_banned BOOLEAN DEFAULT FALSE,
+                must_change_password BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id SERIAL PRIMARY KEY,
+                user_id INT REFERENCES users(id) ON DELETE CASCADE,
+                token_jti VARCHAR(255) UNIQUE NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                last_heartbeat TIMESTAMPTZ DEFAULT NOW(),
+                expires_at TIMESTAMPTZ NOT NULL,
+                ip_address VARCHAR(45),
+                user_agent TEXT,
+                is_active BOOLEAN DEFAULT TRUE
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_activity (
+                id SERIAL PRIMARY KEY,
+                user_id INT REFERENCES users(id) ON DELETE CASCADE,
+                session_jti VARCHAR(255),
+                timestamp TIMESTAMPTZ DEFAULT NOW(),
+                action VARCHAR(100),
+                details JSONB
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_requests (
+                id SERIAL PRIMARY KEY,
+                user_id INT REFERENCES users(id) ON DELETE CASCADE,
+                requested_at TIMESTAMPTZ DEFAULT NOW(),
+                reason TEXT,
+                status VARCHAR(20) DEFAULT 'pending',
+                fulfilled_at TIMESTAMPTZ,
+                fulfilled_by INT,
+                temp_password VARCHAR(255)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pin_attempts (
+                id SERIAL PRIMARY KEY,
+                ip_address VARCHAR(45),
+                attempted_at TIMESTAMPTZ DEFAULT NOW(),
+                success BOOLEAN DEFAULT FALSE
+            )
+        """)
+        conn.commit()
+
+        # Seed admin user
+        admin_pin = "4523"
+        pin_hash = bcrypt.hashpw(admin_pin.encode(), bcrypt.gensalt()).decode()
+        cur.execute("""
+            INSERT INTO users (email, display_name, pin_hash, role, must_change_password)
+            VALUES (%s, %s, %s, %s, TRUE)
+            ON CONFLICT (email) DO NOTHING
+        """, ('glamova.hdht@gmail.com', 'Admin', pin_hash, 'admin'))
         conn.commit()
         cur.close()
         print("Database tables initialized")
@@ -177,6 +257,157 @@ def save_sales_snapshot(products: list):
         cur.close()
     except Exception as e:
         print(f"Save snapshot error: {e}")
+
+
+# ========== AUTH HELPER FUNCTIONS ==========
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+def verify_password(password: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode(), hashed.encode())
+    except:
+        return False
+
+def verify_pin(pin: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(pin.encode(), hashed.encode())
+    except:
+        return False
+
+def get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+def create_session(user_id: int, request: Request) -> str:
+    jti = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(hours=JWT_EXPIRY_HOURS)
+    payload = {"sub": user_id, "jti": jti, "exp": expires, "iat": now}
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO user_sessions (user_id, token_jti, expires_at, ip_address, user_agent)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (user_id, jti, expires, get_client_ip(request),
+                  str(request.headers.get("user-agent", ""))[:500]))
+            conn.commit()
+            cur.close()
+        except Exception as e:
+            print(f"Session creation error: {e}")
+    return token
+
+async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        jti = payload.get("jti")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.id, u.email, u.display_name, u.role, u.is_banned, u.must_change_password,
+                   s.is_active
+            FROM users u
+            JOIN user_sessions s ON s.user_id = u.id AND s.token_jti = %s
+            WHERE u.id = %s
+        """, (jti, user_id))
+        row = cur.fetchone()
+        cur.close()
+
+        if not row:
+            raise HTTPException(status_code=401, detail="Session not found")
+        if row[4]:  # is_banned
+            raise HTTPException(status_code=403, detail="Account banned")
+        if not row[6]:  # session not active
+            raise HTTPException(status_code=401, detail="Session expired")
+
+        return {
+            "id": row[0], "email": row[1], "display_name": row[2],
+            "role": row[3], "is_banned": row[4], "must_change_password": row[5],
+            "jti": jti
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Auth error: {e}")
+
+async def require_admin(user: dict = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+def log_user_activity(user_id: int, jti: str, action: str, details: dict = None):
+    conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO user_activity (user_id, session_jti, action, details)
+            VALUES (%s, %s, %s, %s)
+        """, (user_id, jti, action, json.dumps(details) if details else None))
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        print(f"Activity log error: {e}")
+
+
+# ========== PYDANTIC MODELS ==========
+
+class PinLoginRequest(BaseModel):
+    pin: str
+
+class EmailLoginRequest(BaseModel):
+    email: str
+    password: str
+
+class SetPasswordRequest(BaseModel):
+    new_password: str
+
+class ResetRequestModel(BaseModel):
+    email: str
+    reason: str = ""
+
+class TempPasswordRequest(BaseModel):
+    email: str
+    temp_password: str
+    new_password: str
+
+class CreateUserRequest(BaseModel):
+    email: str
+    display_name: str = ""
+    pin: str = ""
+    role: str = "user"
+
+class UpdateUserRequest(BaseModel):
+    display_name: str = None
+    pin: str = None
+    role: str = None
+    is_banned: bool = None
+
+class TrackRequest(BaseModel):
+    action: str
+    details: dict = None
 
 
 def call_baselinker(method: str, params: dict = None) -> dict:
@@ -960,10 +1191,493 @@ async def health_check():
     }
 
 
+# ========== AUTH ROUTES ==========
+
+@app.post("/api/auth/pin")
+async def pin_login(req: PinLoginRequest, request: Request):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+
+    ip = get_client_ip(request)
+
+    # Rate limit: 3 attempts per IP in 5 minutes
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) FROM pin_attempts
+            WHERE ip_address = %s AND attempted_at > NOW() - INTERVAL '5 minutes' AND NOT success
+        """, (ip,))
+        attempts = cur.fetchone()[0]
+        cur.close()
+
+        if attempts >= 3:
+            return {"success": False, "fallback": "email_password", "message": "Too many PIN attempts. Use email and password."}
+    except:
+        pass
+
+    # Find users with PINs
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, email, display_name, role, pin_hash, is_banned, must_change_password FROM users WHERE pin_hash IS NOT NULL")
+        users = cur.fetchall()
+        cur.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    matched_user = None
+    for u in users:
+        if u[4] and verify_pin(req.pin, u[4]):
+            matched_user = u
+            break
+
+    # Log attempt
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO pin_attempts (ip_address, success) VALUES (%s, %s)", (ip, matched_user is not None))
+        conn.commit()
+        cur.close()
+    except:
+        pass
+
+    if not matched_user:
+        # Check if this was the 3rd failure
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT COUNT(*) FROM pin_attempts
+                WHERE ip_address = %s AND attempted_at > NOW() - INTERVAL '5 minutes' AND NOT success
+            """, (ip,))
+            fail_count = cur.fetchone()[0]
+            cur.close()
+            if fail_count >= 3:
+                return {"success": False, "fallback": "email_password", "message": "Too many attempts. Use email and password."}
+        except:
+            pass
+        return {"success": False, "message": "Invalid PIN"}
+
+    if matched_user[5]:  # is_banned
+        return {"success": False, "message": "Account is banned"}
+
+    token = create_session(matched_user[0], request)
+    log_user_activity(matched_user[0], "", "pin_login", {"ip": ip})
+
+    return {
+        "success": True,
+        "token": token,
+        "user": {
+            "id": matched_user[0],
+            "email": matched_user[1],
+            "display_name": matched_user[2],
+            "role": matched_user[3],
+            "must_change_password": matched_user[6]
+        }
+    }
+
+@app.post("/api/auth/login")
+async def email_login(req: EmailLoginRequest, request: Request):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, email, display_name, role, password_hash, is_banned, must_change_password FROM users WHERE email = %s", (req.email.lower().strip(),))
+        user = cur.fetchone()
+        cur.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if not user or not user[4]:
+        return {"success": False, "message": "Invalid email or password"}
+
+    if not verify_password(req.password, user[4]):
+        return {"success": False, "message": "Invalid email or password"}
+
+    if user[5]:  # is_banned
+        return {"success": False, "message": "Account is banned"}
+
+    token = create_session(user[0], request)
+    ip = get_client_ip(request)
+    log_user_activity(user[0], "", "email_login", {"ip": ip})
+
+    return {
+        "success": True,
+        "token": token,
+        "user": {
+            "id": user[0],
+            "email": user[1],
+            "display_name": user[2],
+            "role": user[3],
+            "must_change_password": user[6]
+        }
+    }
+
+@app.post("/api/auth/set-password")
+async def set_password(req: SetPasswordRequest, user: dict = Depends(get_current_user)):
+    if len(req.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+
+    try:
+        cur = conn.cursor()
+        pw_hash = hash_password(req.new_password)
+        cur.execute("UPDATE users SET password_hash = %s, must_change_password = FALSE, updated_at = NOW() WHERE id = %s", (pw_hash, user["id"]))
+        conn.commit()
+        cur.close()
+        log_user_activity(user["id"], user.get("jti", ""), "set_password", {})
+        return {"success": True, "message": "Password set successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/auth/reset-request")
+async def request_reset(req: ResetRequestModel):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE email = %s", (req.email.lower().strip(),))
+        user = cur.fetchone()
+        if not user:
+            return {"success": True, "message": "If an account exists, your request has been sent to the admin."}
+
+        cur.execute("""
+            INSERT INTO password_reset_requests (user_id, reason) VALUES (%s, %s)
+        """, (user[0], req.reason))
+        conn.commit()
+        cur.close()
+        return {"success": True, "message": "Your request has been sent to the admin."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/auth/use-temp-password")
+async def use_temp_password(req: TempPasswordRequest, request: Request):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, display_name, role FROM users WHERE email = %s", (req.email.lower().strip(),))
+        user = cur.fetchone()
+        if not user:
+            return {"success": False, "message": "Invalid credentials"}
+
+        # Check temp password in reset requests
+        cur.execute("""
+            SELECT id, temp_password FROM password_reset_requests
+            WHERE user_id = %s AND status = 'fulfilled' AND temp_password IS NOT NULL
+            ORDER BY fulfilled_at DESC LIMIT 1
+        """, (user[0],))
+        reset_req = cur.fetchone()
+
+        if not reset_req or not verify_password(req.temp_password, reset_req[1]):
+            return {"success": False, "message": "Invalid temp password"}
+
+        # Set new password and mark reset as used
+        pw_hash = hash_password(req.new_password)
+        cur.execute("UPDATE users SET password_hash = %s, must_change_password = FALSE, updated_at = NOW() WHERE id = %s", (pw_hash, user[0]))
+        cur.execute("UPDATE password_reset_requests SET status = 'used' WHERE id = %s", (reset_req[0],))
+        conn.commit()
+
+        token = create_session(user[0], request)
+        cur.close()
+
+        return {
+            "success": True,
+            "token": token,
+            "user": {"id": user[0], "email": req.email, "display_name": user[1], "role": user[2], "must_change_password": False}
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/auth/logout")
+async def logout(user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("UPDATE user_sessions SET is_active = FALSE WHERE token_jti = %s", (user.get("jti"),))
+            conn.commit()
+            cur.close()
+        except:
+            pass
+    log_user_activity(user["id"], user.get("jti", ""), "logout", {})
+    return {"success": True}
+
+@app.get("/api/auth/me")
+async def get_me(user: dict = Depends(get_current_user)):
+    return {"user": user}
+
+@app.post("/api/auth/heartbeat")
+async def heartbeat(user: dict = Depends(get_current_user)):
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("UPDATE user_sessions SET last_heartbeat = NOW() WHERE token_jti = %s", (user.get("jti"),))
+            conn.commit()
+            cur.close()
+        except:
+            pass
+    return {"ok": True}
+
+
+# ========== ADMIN ROUTES ==========
+
+@app.get("/api/admin/users")
+async def admin_list_users(user: dict = Depends(require_admin)):
+    conn = get_db_connection()
+    if not conn:
+        return {"users": []}
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, email, display_name, role, is_banned, must_change_password, created_at FROM users ORDER BY id")
+        rows = cur.fetchall()
+        cur.close()
+        return {"users": [{"id": r[0], "email": r[1], "display_name": r[2], "role": r[3], "is_banned": r[4], "must_change_password": r[5], "created_at": r[6].isoformat() if r[6] else None} for r in rows]}
+    except Exception as e:
+        return {"error": str(e), "users": []}
+
+@app.post("/api/admin/users")
+async def admin_create_user(req: CreateUserRequest, user: dict = Depends(require_admin)):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+    try:
+        cur = conn.cursor()
+        pin_h = bcrypt.hashpw(req.pin.encode(), bcrypt.gensalt()).decode() if req.pin else None
+        cur.execute("""
+            INSERT INTO users (email, display_name, pin_hash, role, must_change_password)
+            VALUES (%s, %s, %s, %s, TRUE) RETURNING id
+        """, (req.email.lower().strip(), req.display_name, pin_h, req.role))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        log_user_activity(user["id"], user.get("jti", ""), "admin_create_user", {"new_user_id": new_id, "email": req.email})
+        return {"success": True, "user_id": new_id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/api/admin/users/{user_id}")
+async def admin_update_user(user_id: int, req: UpdateUserRequest, user: dict = Depends(require_admin)):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+    try:
+        cur = conn.cursor()
+        updates = []
+        params = []
+        if req.display_name is not None:
+            updates.append("display_name = %s")
+            params.append(req.display_name)
+        if req.pin is not None and req.pin:
+            updates.append("pin_hash = %s")
+            params.append(bcrypt.hashpw(req.pin.encode(), bcrypt.gensalt()).decode())
+        if req.role is not None:
+            updates.append("role = %s")
+            params.append(req.role)
+        if req.is_banned is not None:
+            updates.append("is_banned = %s")
+            params.append(req.is_banned)
+        if updates:
+            updates.append("updated_at = NOW()")
+            params.append(user_id)
+            cur.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = %s", params)
+            conn.commit()
+        cur.close()
+        log_user_activity(user["id"], user.get("jti", ""), "admin_update_user", {"target_user_id": user_id})
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(user_id: int, user: dict = Depends(require_admin)):
+    if user_id == user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        conn.commit()
+        cur.close()
+        log_user_activity(user["id"], user.get("jti", ""), "admin_delete_user", {"deleted_user_id": user_id})
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/sessions")
+async def admin_sessions(user: dict = Depends(require_admin)):
+    conn = get_db_connection()
+    if not conn:
+        return {"sessions": []}
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT s.id, u.email, u.display_name, s.created_at, s.last_heartbeat, s.ip_address, s.user_agent,
+                   (s.last_heartbeat > NOW() - INTERVAL '5 minutes') as is_online
+            FROM user_sessions s
+            JOIN users u ON u.id = s.user_id
+            WHERE s.is_active = TRUE AND s.expires_at > NOW()
+            ORDER BY s.last_heartbeat DESC
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        return {"sessions": [{"id": r[0], "email": r[1], "display_name": r[2], "created_at": r[3].isoformat() if r[3] else None, "last_heartbeat": r[4].isoformat() if r[4] else None, "ip_address": r[5], "user_agent": r[6], "is_online": r[7]} for r in rows]}
+    except Exception as e:
+        return {"error": str(e), "sessions": []}
+
+@app.get("/api/admin/screen-time")
+async def admin_screen_time(user: dict = Depends(require_admin)):
+    conn = get_db_connection()
+    if not conn:
+        return {"screen_time": []}
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.email, u.display_name,
+                   DATE(s.created_at) as session_date,
+                   SUM(EXTRACT(EPOCH FROM (s.last_heartbeat - s.created_at)) / 60) as minutes
+            FROM user_sessions s
+            JOIN users u ON u.id = s.user_id
+            WHERE s.last_heartbeat > s.created_at
+            GROUP BY u.email, u.display_name, DATE(s.created_at)
+            ORDER BY session_date DESC, minutes DESC
+            LIMIT 100
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        return {"screen_time": [{"email": r[0], "display_name": r[1], "date": r[2].isoformat() if r[2] else None, "minutes": round(float(r[3] or 0), 1)} for r in rows]}
+    except Exception as e:
+        return {"error": str(e), "screen_time": []}
+
+@app.get("/api/admin/search-history")
+async def admin_search_history(user: dict = Depends(require_admin)):
+    conn = get_db_connection()
+    if not conn:
+        return {"searches": []}
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.email, ua.timestamp, ua.details->>'query' as query, ua.details->>'filters' as filters
+            FROM user_activity ua
+            JOIN users u ON u.id = ua.user_id
+            WHERE ua.action IN ('search', 'filter', 'view_sales')
+            ORDER BY ua.timestamp DESC
+            LIMIT 200
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        return {"searches": [{"email": r[0], "timestamp": r[1].isoformat() if r[1] else None, "query": r[2], "filters": r[3]} for r in rows]}
+    except Exception as e:
+        return {"error": str(e), "searches": []}
+
+@app.get("/api/admin/activity")
+async def admin_activity_log(page: int = Query(1, ge=1), limit: int = Query(50, ge=1, le=200), user: dict = Depends(require_admin)):
+    conn = get_db_connection()
+    if not conn:
+        return {"activity": [], "total": 0}
+    try:
+        cur = conn.cursor()
+        offset = (page - 1) * limit
+        cur.execute("SELECT COUNT(*) FROM user_activity")
+        total = cur.fetchone()[0]
+        cur.execute("""
+            SELECT ua.id, u.email, u.display_name, ua.timestamp, ua.action, ua.details
+            FROM user_activity ua
+            JOIN users u ON u.id = ua.user_id
+            ORDER BY ua.timestamp DESC
+            LIMIT %s OFFSET %s
+        """, (limit, offset))
+        rows = cur.fetchall()
+        cur.close()
+        return {
+            "activity": [{"id": r[0], "email": r[1], "display_name": r[2], "timestamp": r[3].isoformat() if r[3] else None, "action": r[4], "details": r[5]} for r in rows],
+            "total": total,
+            "page": page,
+            "pages": (total + limit - 1) // limit
+        }
+    except Exception as e:
+        return {"error": str(e), "activity": [], "total": 0}
+
+@app.get("/api/admin/reset-requests")
+async def admin_reset_requests(user: dict = Depends(require_admin)):
+    conn = get_db_connection()
+    if not conn:
+        return {"requests": []}
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT pr.id, u.email, u.display_name, pr.requested_at, pr.reason, pr.status
+            FROM password_reset_requests pr
+            JOIN users u ON u.id = pr.user_id
+            ORDER BY pr.requested_at DESC
+            LIMIT 50
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        return {"requests": [{"id": r[0], "email": r[1], "display_name": r[2], "requested_at": r[3].isoformat() if r[3] else None, "reason": r[4], "status": r[5]} for r in rows]}
+    except Exception as e:
+        return {"error": str(e), "requests": []}
+
+@app.post("/api/admin/reset-requests/{request_id}/fulfill")
+async def admin_fulfill_reset(request_id: int, user: dict = Depends(require_admin)):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+    try:
+        temp_pw = secrets.token_urlsafe(8)
+        temp_hash = hash_password(temp_pw)
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE password_reset_requests
+            SET status = 'fulfilled', fulfilled_at = NOW(), fulfilled_by = %s, temp_password = %s
+            WHERE id = %s AND status = 'pending'
+        """, (user["id"], temp_hash, request_id))
+        conn.commit()
+        cur.close()
+        log_user_activity(user["id"], user.get("jti", ""), "fulfill_reset", {"request_id": request_id})
+        return {"success": True, "temp_password": temp_pw}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/admin/reset-requests/{request_id}/reject")
+async def admin_reject_reset(request_id: int, user: dict = Depends(require_admin)):
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE password_reset_requests SET status = 'rejected' WHERE id = %s AND status = 'pending'", (request_id,))
+        conn.commit()
+        cur.close()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== TRACKING ENDPOINT ==========
+
+@app.post("/api/track")
+async def track_action(req: TrackRequest, user: dict = Depends(get_current_user)):
+    log_user_activity(user["id"], user.get("jti", ""), req.action, req.details)
+    return {"ok": True}
+
+
+# ========== PROTECTED DATA ROUTES ==========
+
 @app.get("/api/sales")
 async def get_sales(
     date_from: str = Query("", description="Start date YYYY-MM-DD"),
     date_to: str = Query("", description="End date YYYY-MM-DD"),
+    user: dict = Depends(get_current_user)
 ):
     if cache["data"] is None:
         return JSONResponse(status_code=503, content={"error": "Data not loaded yet. Please wait..."})
@@ -1024,7 +1738,7 @@ async def get_sales(
 
 
 @app.get("/api/purchase-orders")
-async def get_purchase_orders():
+async def get_purchase_orders(user: dict = Depends(get_current_user)):
     """Return the list of purchase orders"""
     return {
         "purchase_orders": cache.get("purchase_orders", [])
@@ -1032,7 +1746,7 @@ async def get_purchase_orders():
 
 
 @app.post("/api/refresh")
-async def force_refresh(background_tasks: BackgroundTasks):
+async def force_refresh(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     if cache["is_refreshing"]:
         return {"status": "already_refreshing", "message": "Refresh already in progress"}
 
@@ -1042,7 +1756,7 @@ async def force_refresh(background_tasks: BackgroundTasks):
 
 
 @app.get("/api/activity")
-async def get_activity():
+async def get_activity(user: dict = Depends(get_current_user)):
     """Get recent activity log"""
     conn = get_db_connection()
     if not conn:
@@ -1071,7 +1785,7 @@ async def get_activity():
 
 
 @app.get("/api/debug/costs")
-async def debug_costs():
+async def debug_costs(user: dict = Depends(require_admin)):
     """Debug: show cost and PO loading status"""
     costs = cache.get("costs", ({}, {}))
     po_items = cache.get("po_items_by_bl_id", {})
@@ -1093,7 +1807,7 @@ async def debug_costs():
 
 
 @app.get("/api/debug/orders")
-async def debug_orders():
+async def debug_orders(user: dict = Depends(require_admin)):
     """Debug: show timestamp fields for recent orders to diagnose date filtering"""
     # Use all-status orders for debug (shows the full picture)
     all_recent = cache.get("all_recent_orders")
@@ -1148,6 +1862,7 @@ async def download_excel(
     search: str = Query("", description="Search text or Shopify URL"),
     date_from: str = Query("", description="Start date YYYY-MM-DD"),
     date_to: str = Query("", description="End date YYYY-MM-DD"),
+    user: dict = Depends(get_current_user)
 ):
     if cache["data"] is None:
         return JSONResponse(status_code=503, content={"error": "Data not loaded yet"})

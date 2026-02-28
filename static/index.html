@@ -253,6 +253,108 @@
             margin-top: 8px;
         }
 
+        /* ========== AUTH SCREENS ========== */
+        .auth-screen {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, #4472C4 0%, #2c5aa0 50%, #1a3d7c 100%);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999;
+        }
+        .auth-screen.hidden { display: none; }
+        .auth-card {
+            background: white; border-radius: 16px; padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 90%; max-width: 380px; text-align: center;
+        }
+        .auth-card h2 { font-size: 22px; margin-bottom: 8px; color: #333; }
+        .auth-card p { color: #666; font-size: 14px; margin-bottom: 24px; }
+        .auth-card .logo { font-size: 36px; margin-bottom: 16px; }
+
+        /* PIN dots */
+        .pin-dots { display: flex; justify-content: center; gap: 16px; margin-bottom: 32px; }
+        .pin-dot {
+            width: 16px; height: 16px; border-radius: 50%;
+            border: 2px solid #4472C4; background: white; transition: all 0.2s;
+        }
+        .pin-dot.filled { background: #4472C4; transform: scale(1.1); }
+        .pin-dot.error { border-color: #dc3545; background: #dc3545; }
+
+        /* PIN keypad */
+        .pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 260px; margin: 0 auto; }
+        .pin-key {
+            width: 70px; height: 70px; border-radius: 50%; border: 1px solid #e0e0e0;
+            background: #f8f9fa; font-size: 24px; font-weight: 600; color: #333;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s; margin: 0 auto;
+        }
+        .pin-key:active { background: #4472C4; color: white; transform: scale(0.95); }
+        .pin-key.empty { visibility: hidden; }
+        .pin-key.backspace { font-size: 18px; }
+
+        .auth-link { color: #4472C4; cursor: pointer; font-size: 13px; margin-top: 16px; display: inline-block; }
+        .auth-link:hover { text-decoration: underline; }
+        .auth-message { padding: 10px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+        .auth-message.error { background: #fff5f5; color: #c00; border: 1px solid #ffcccc; }
+        .auth-message.success { background: #f0fff4; color: #28a745; border: 1px solid #c3e6cb; }
+
+        /* Auth form fields */
+        .auth-field { margin-bottom: 16px; text-align: left; }
+        .auth-field label { display: block; font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; margin-bottom: 6px; }
+        .auth-field input {
+            width: 100%; padding: 12px 16px; border: 1px solid #d0d0d0; border-radius: 8px;
+            font-size: 15px; transition: border-color 0.2s;
+        }
+        .auth-field input:focus { outline: none; border-color: #4472C4; box-shadow: 0 0 0 3px rgba(68,114,196,0.15); }
+        .auth-btn {
+            width: 100%; padding: 14px; background: #4472C4; color: white; border: none;
+            border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer;
+            transition: background 0.2s; margin-top: 8px;
+        }
+        .auth-btn:hover { background: #3661b0; }
+        .auth-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* ========== ADMIN PANEL ========== */
+        .admin-panel { display: none; padding: 20px 30px; padding-bottom: 100px; }
+        .admin-panel.visible { display: block; }
+        .admin-tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+        .admin-tab {
+            padding: 8px 16px; border: 1px solid #d0d0d0; border-radius: 8px;
+            background: white; cursor: pointer; font-size: 13px; font-weight: 500;
+            transition: all 0.2s;
+        }
+        .admin-tab.active { background: #4472C4; color: white; border-color: #4472C4; }
+        .admin-tab:hover:not(.active) { background: #f0f4ff; }
+        .admin-content { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .admin-table th { background: #f8f9fa; padding: 10px 12px; text-align: left; font-weight: 600; color: #555; border-bottom: 2px solid #e0e0e0; }
+        .admin-table td { padding: 10px 12px; border-bottom: 1px solid #eee; }
+        .admin-table tr:hover { background: #f8fafc; }
+        .admin-btn { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+        .admin-btn-primary { background: #4472C4; color: white; }
+        .admin-btn-danger { background: #dc3545; color: white; }
+        .admin-btn-success { background: #28a745; color: white; }
+        .admin-btn-warning { background: #fd7e14; color: white; }
+        .admin-btn:hover { opacity: 0.9; }
+        .online-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .online-dot.green { background: #28a745; }
+        .online-dot.gray { background: #ccc; }
+        .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .admin-header h3 { font-size: 18px; font-weight: 600; }
+
+        /* Admin Modal */
+        .admin-modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+            z-index: 10000;
+        }
+        .admin-modal-overlay.hidden { display: none; }
+        .admin-modal {
+            background: white; border-radius: 12px; padding: 24px;
+            width: 90%; max-width: 440px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .admin-modal h3 { font-size: 18px; margin-bottom: 16px; }
+        .admin-modal .auth-field { margin-bottom: 12px; }
+
         /* ========== MOBILE RESPONSIVE ========== */
         @media (max-width: 768px) {
             .floating-nav { display: flex; }
@@ -327,6 +429,13 @@
 
             /* Hide Export from nav */
             #nav-download { display: none; }
+
+            /* Admin panel mobile */
+            .admin-panel { padding: 12px 16px; }
+            .admin-tabs { gap: 4px; }
+            .admin-tab { padding: 6px 10px; font-size: 12px; }
+            .admin-table { font-size: 12px; }
+            .admin-table th, .admin-table td { padding: 8px 6px; }
         }
 
         /* Large screens - never show mobile views */
@@ -336,6 +445,137 @@
     </style>
 </head>
 <body>
+    <!-- ===== LOGIN: PIN ===== -->
+    <div class="auth-screen" id="login-pin-screen">
+        <div class="auth-card">
+            <div class="logo">&#128274;</div>
+            <h2>BL Sales Dashboard</h2>
+            <p>Enter your 4-digit PIN</p>
+            <div id="pin-message"></div>
+            <div class="pin-dots">
+                <div class="pin-dot" id="dot-0"></div>
+                <div class="pin-dot" id="dot-1"></div>
+                <div class="pin-dot" id="dot-2"></div>
+                <div class="pin-dot" id="dot-3"></div>
+            </div>
+            <div class="pin-keypad">
+                <div class="pin-key" onclick="pinPress('1')">1</div>
+                <div class="pin-key" onclick="pinPress('2')">2</div>
+                <div class="pin-key" onclick="pinPress('3')">3</div>
+                <div class="pin-key" onclick="pinPress('4')">4</div>
+                <div class="pin-key" onclick="pinPress('5')">5</div>
+                <div class="pin-key" onclick="pinPress('6')">6</div>
+                <div class="pin-key" onclick="pinPress('7')">7</div>
+                <div class="pin-key" onclick="pinPress('8')">8</div>
+                <div class="pin-key" onclick="pinPress('9')">9</div>
+                <div class="pin-key empty"></div>
+                <div class="pin-key" onclick="pinPress('0')">0</div>
+                <div class="pin-key backspace" onclick="pinBackspace()">&#9003;</div>
+            </div>
+            <div id="pin-fallback" style="display:none">
+                <span class="auth-link" onclick="showScreen('login-email-screen')">Use email &amp; password instead</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== LOGIN: EMAIL ===== -->
+    <div class="auth-screen hidden" id="login-email-screen">
+        <div class="auth-card">
+            <div class="logo">&#128231;</div>
+            <h2>Sign In</h2>
+            <p>Enter your email and password</p>
+            <div id="email-message"></div>
+            <div class="auth-field">
+                <label>Email</label>
+                <input type="email" id="login-email" placeholder="you@example.com">
+            </div>
+            <div class="auth-field">
+                <label>Password</label>
+                <input type="password" id="login-password" placeholder="Your password">
+            </div>
+            <button class="auth-btn" onclick="emailLogin()">Sign In</button>
+            <div style="margin-top: 12px;">
+                <span class="auth-link" onclick="showScreen('login-pin-screen')">Use PIN instead</span>
+                &nbsp;|&nbsp;
+                <span class="auth-link" onclick="showScreen('reset-request-screen')">Forgot password?</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SET PASSWORD ===== -->
+    <div class="auth-screen hidden" id="set-password-screen">
+        <div class="auth-card">
+            <div class="logo">&#128275;</div>
+            <h2>Set Your Password</h2>
+            <p>Create a password for email sign-in</p>
+            <div id="setpw-message"></div>
+            <div class="auth-field">
+                <label>New Password</label>
+                <input type="password" id="new-password" placeholder="At least 6 characters">
+            </div>
+            <div class="auth-field">
+                <label>Confirm Password</label>
+                <input type="password" id="confirm-password" placeholder="Confirm your password">
+            </div>
+            <button class="auth-btn" onclick="setPassword()">Set Password</button>
+        </div>
+    </div>
+
+    <!-- ===== RESET REQUEST ===== -->
+    <div class="auth-screen hidden" id="reset-request-screen">
+        <div class="auth-card">
+            <div class="logo">&#128232;</div>
+            <h2>Reset Password</h2>
+            <p>Your request will be sent to the admin</p>
+            <div id="reset-message"></div>
+            <div class="auth-field">
+                <label>Email</label>
+                <input type="email" id="reset-email" placeholder="you@example.com">
+            </div>
+            <div class="auth-field">
+                <label>Reason (optional)</label>
+                <input type="text" id="reset-reason" placeholder="Why do you need a reset?">
+            </div>
+            <button class="auth-btn" onclick="submitResetRequest()">Send Request</button>
+            <div style="margin-top: 12px;">
+                <span class="auth-link" onclick="showScreen('login-pin-screen')">Back to PIN</span>
+                &nbsp;|&nbsp;
+                <span class="auth-link" onclick="showScreen('temp-password-screen')">I have a temp password</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== USE TEMP PASSWORD ===== -->
+    <div class="auth-screen hidden" id="temp-password-screen">
+        <div class="auth-card">
+            <div class="logo">&#128273;</div>
+            <h2>Temp Password</h2>
+            <p>Enter the temp password from admin and set a new one</p>
+            <div id="temp-message"></div>
+            <div class="auth-field">
+                <label>Email</label>
+                <input type="email" id="temp-email" placeholder="you@example.com">
+            </div>
+            <div class="auth-field">
+                <label>Temp Password</label>
+                <input type="text" id="temp-pw" placeholder="From admin">
+            </div>
+            <div class="auth-field">
+                <label>New Password</label>
+                <input type="password" id="temp-new-pw" placeholder="Your new password">
+            </div>
+            <button class="auth-btn" onclick="useTempPassword()">Set New Password</button>
+            <div style="margin-top: 12px;">
+                <span class="auth-link" onclick="showScreen('login-pin-screen')">Back to PIN</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ADMIN MODAL ===== -->
+    <div class="admin-modal-overlay hidden" id="admin-modal-overlay" onclick="if(event.target===this)closeAdminModal()">
+        <div class="admin-modal" id="admin-modal-content"></div>
+    </div>
+
     <div class="header">
         <div class="header-top">
             <h1 id="dashboard-title">BL Sales Dashboard</h1>
@@ -399,805 +639,1039 @@
         </div>
         <div class="buttons">
             <button class="btn btn-primary" id="refresh-btn" onclick="forceRefresh()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                <span data-i18n="refreshNow">Refresh Now</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36"></path></svg>
+                <span data-i18n="refresh">Refresh</span>
             </button>
-            <button class="btn btn-secondary" onclick="downloadExcel()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                <span data-i18n="downloadExcel">Download Excel</span>
+            <button class="btn btn-secondary" id="download-btn" onclick="downloadExcel()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span data-i18n="export">Export</span>
             </button>
         </div>
     </div>
 
-    <!-- Desktop Time Frame Bar -->
+    <!-- Time Frame Bar -->
     <div class="time-bar" id="time-bar">
-        <span class="time-bar-label" data-i18n="timeFrame">Time Frame</span>
-        <button class="time-btn active" data-preset="all" onclick="selectPreset('all')" data-i18n="allTime">All Time</button>
-        <button class="time-btn" data-preset="today" onclick="selectPreset('today')" data-i18n="today">Today</button>
-        <button class="time-btn" data-preset="yesterday" onclick="selectPreset('yesterday')" data-i18n="yesterday">Yesterday</button>
-        <button class="time-btn" data-preset="7d" onclick="selectPreset('7d')" data-i18n="last7Days">Last 7 Days</button>
-        <button class="time-btn" data-preset="30d" onclick="selectPreset('30d')" data-i18n="last30Days">Last 30 Days</button>
-        <button class="time-btn" data-preset="month" onclick="selectPreset('month')" data-i18n="thisMonth">This Month</button>
-        <button class="time-btn" data-preset="custom" onclick="selectPreset('custom')" data-i18n="custom">Custom</button>
+        <span class="time-bar-label" data-i18n="period">Period</span>
+        <button class="time-btn active" id="btn-today" onclick="setTimePeriod('today')">Today</button>
+        <button class="time-btn" id="btn-week" onclick="setTimePeriod('week')">Week</button>
+        <button class="time-btn" id="btn-month" onclick="setTimePeriod('month')">Month</button>
+        <button class="time-btn" id="btn-year" onclick="setTimePeriod('year')">Year</button>
+        <button class="time-btn" id="btn-custom" onclick="toggleCustomDateRange()">Custom</button>
         <div class="date-range" id="date-range">
             <span class="date-label" data-i18n="from">From</span>
             <input type="date" id="date-from">
             <span class="date-label" data-i18n="to">To</span>
             <input type="date" id="date-to">
-            <button class="apply-btn" onclick="applyCustomRange()" data-i18n="apply">Apply</button>
-        </div>
-    </div>
-
-    <!-- Desktop Filter Bar -->
-    <div class="filter-bar" id="filter-bar">
-        <div class="filter-group">
-            <label data-i18n="categoryLabel">Category</label>
-            <select id="filter-category" onchange="applyFilters()">
-                <option value="" data-i18n="allCategories">All Categories</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <label data-i18n="purchaseOrderLabel">Purchase Order</label>
-            <select id="filter-po" onchange="applyFilters()">
-                <option value="" data-i18n="allPOs">All Purchase Orders</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <label data-i18n="searchLabel">Search</label>
-            <input type="text" id="filter-search" placeholder="Search by name, SKU, or paste Shopify URL..." oninput="applyFilters()">
-        </div>
-    </div>
-
-    <!-- Main Content (Dashboard view) -->
-    <div class="container" id="main-container">
-        <div id="content">
-            <div class="loading">
-                <div class="spinner"></div>
-                <p data-i18n="loadingData">Loading sales data...</p>
-            </div>
+            <button class="apply-btn" onclick="applyCustomDateRange()"><span data-i18n="apply">Apply</span></button>
         </div>
     </div>
 
     <!-- Mobile Time View -->
     <div class="mobile-view" id="mobile-time-view">
         <div class="mobile-time-panel">
-            <h3 data-i18n="timeFrame">Time Frame</h3>
-            <div class="mobile-preset-grid" id="mobile-preset-grid">
-                <button class="mobile-preset-btn active" data-preset="all" onclick="mobileSelectPreset('all')" data-i18n="allTime">All Time</button>
-                <button class="mobile-preset-btn" data-preset="today" onclick="mobileSelectPreset('today')" data-i18n="today">Today</button>
-                <button class="mobile-preset-btn" data-preset="yesterday" onclick="mobileSelectPreset('yesterday')" data-i18n="yesterday">Yesterday</button>
-                <button class="mobile-preset-btn" data-preset="7d" onclick="mobileSelectPreset('7d')" data-i18n="last7Days">Last 7 Days</button>
-                <button class="mobile-preset-btn" data-preset="30d" onclick="mobileSelectPreset('30d')" data-i18n="last30Days">Last 30 Days</button>
-                <button class="mobile-preset-btn" data-preset="month" onclick="mobileSelectPreset('month')" data-i18n="thisMonth">This Month</button>
+            <h3>Select Time Period</h3>
+            <div class="mobile-preset-grid">
+                <button class="mobile-preset-btn active" onclick="setTimePeriod('today')">Today</button>
+                <button class="mobile-preset-btn" onclick="setTimePeriod('week')">Week</button>
+                <button class="mobile-preset-btn" onclick="setTimePeriod('month')">Month</button>
+                <button class="mobile-preset-btn" onclick="setTimePeriod('year')">Year</button>
             </div>
             <div class="mobile-custom-range">
-                <label data-i18n="from">From</label>
+                <label>Custom Date Range</label>
+                <label style="margin-top: 12px;">From</label>
                 <input type="date" id="mobile-date-from">
-                <label data-i18n="to">To</label>
+                <label>To</label>
                 <input type="date" id="mobile-date-to">
-                <button class="mobile-apply-btn" onclick="mobileApplyCustomRange()" data-i18n="apply">Apply</button>
+                <button class="mobile-apply-btn" onclick="applyCustomDateRange()">Apply</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar" id="filter-bar">
+        <div class="filter-group">
+            <label data-i18n="category">Category</label>
+            <select id="filter-category" onchange="applyFilters()"><option value="">All</option></select>
+        </div>
+        <div class="filter-group">
+            <label data-i18n="po">Purchase Order</label>
+            <select id="filter-po" onchange="applyFilters()"><option value="">All</option></select>
+        </div>
+        <div class="filter-group">
+            <label data-i18n="search">Search</label>
+            <input type="text" id="filter-search" placeholder="Product name or SKU" onkeyup="applyFilters()">
         </div>
     </div>
 
     <!-- Mobile Filter View -->
     <div class="mobile-view" id="mobile-filter-view">
         <div class="mobile-filter-panel">
-            <h3 data-i18n="filters">Filters</h3>
+            <h3>Filters</h3>
             <div class="mobile-filter-group">
-                <label data-i18n="categoryLabel">Category</label>
-                <select id="mobile-filter-category">
-                    <option value="" data-i18n="allCategories">All Categories</option>
-                </select>
+                <label data-i18n="category">Category</label>
+                <select id="mobile-filter-category"><option value="">All</option></select>
             </div>
             <div class="mobile-filter-group">
-                <label data-i18n="purchaseOrderLabel">Purchase Order</label>
-                <select id="mobile-filter-po">
-                    <option value="" data-i18n="allPOs">All Purchase Orders</option>
-                </select>
+                <label data-i18n="po">Purchase Order</label>
+                <select id="mobile-filter-po"><option value="">All</option></select>
             </div>
             <div class="mobile-filter-group">
-                <label data-i18n="searchLabel">Search</label>
-                <input type="text" id="mobile-filter-search" placeholder="Search by name, SKU...">
+                <label data-i18n="search">Search</label>
+                <input type="text" id="mobile-filter-search" placeholder="Product name or SKU">
             </div>
-            <button class="mobile-filter-apply" onclick="mobileApplyFilters()" data-i18n="applyFilters">Apply Filters</button>
+            <button class="mobile-filter-apply" onclick="applyMobileFilters()">Apply Filters</button>
         </div>
     </div>
 
-    <!-- Floating Pill Navbar (Mobile) -->
+    <!-- Main Container -->
+    <div class="container" id="main-container">
+        <div id="content"></div>
+    </div>
+
+    <!-- ===== ADMIN PANEL ===== -->
+    <div class="admin-panel" id="admin-panel">
+        <div class="admin-tabs">
+            <div class="admin-tab active" onclick="switchAdminTab('users')">Users</div>
+            <div class="admin-tab" onclick="switchAdminTab('sessions')">Live Sessions</div>
+            <div class="admin-tab" onclick="switchAdminTab('screen-time')">Screen Time</div>
+            <div class="admin-tab" onclick="switchAdminTab('searches')">Searches</div>
+            <div class="admin-tab" onclick="switchAdminTab('activity')">Activity Log</div>
+            <div class="admin-tab" onclick="switchAdminTab('resets')">Reset Requests</div>
+        </div>
+        <div class="admin-content" id="admin-content">
+            <p style="color:#666">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Floating Navigation -->
     <nav class="floating-nav" id="floating-nav">
-        <button class="active" onclick="switchMobileView('dashboard')" id="nav-dashboard">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-            <span class="nav-label" data-i18n="navDashboard">Dashboard</span>
+        <button id="nav-dashboard" class="active" onclick="switchMobileView('dashboard')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            <span class="nav-label">Dashboard</span>
         </button>
-        <button onclick="switchMobileView('time')" id="nav-time">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <span class="nav-label" data-i18n="navTime">Time</span>
+        <button id="nav-time" onclick="switchMobileView('time')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span class="nav-label">Time</span>
         </button>
-        <button onclick="switchMobileView('filter')" id="nav-filter">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-            <span class="nav-label" data-i18n="navFilter">Filter</span>
+        <button id="nav-filter" onclick="switchMobileView('filter')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+            <span class="nav-label">Filter</span>
         </button>
-        <button onclick="downloadExcel()" id="nav-download">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span class="nav-label" data-i18n="navExport">Export</span>
+        <button id="nav-refresh" onclick="forceRefresh()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36"></path></svg>
+            <span class="nav-label">Refresh</span>
         </button>
-        <button onclick="forceRefresh()" id="nav-refresh">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            <span class="nav-label" data-i18n="navRefresh">Refresh</span>
+        <button id="nav-download" onclick="downloadExcel()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span class="nav-label">Export</span>
+        </button>
+        <button onclick="switchMobileView('admin')" id="nav-admin" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span class="nav-label">Admin</span>
+        </button>
+        <button onclick="doLogout()" id="nav-logout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span class="nav-label">Logout</span>
         </button>
     </nav>
 
     <script>
-        // ========== I18N ==========
+        // ========== AUTH STATE ==========
+        let authToken = localStorage.getItem('bl_auth_token');
+        let currentUser = JSON.parse(localStorage.getItem('bl_auth_user') || 'null');
+        let heartbeatInterval = null;
+
+        function saveAuth(token, user) {
+            authToken = token;
+            currentUser = user;
+            localStorage.setItem('bl_auth_token', token);
+            localStorage.setItem('bl_auth_user', JSON.stringify(user));
+        }
+
+        function clearAuth() {
+            authToken = null;
+            currentUser = null;
+            localStorage.removeItem('bl_auth_token');
+            localStorage.removeItem('bl_auth_user');
+            if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+        }
+
+        async function authFetch(url, options = {}) {
+            if (!options.headers) options.headers = {};
+            if (authToken) options.headers['Authorization'] = 'Bearer ' + authToken;
+            const resp = await fetch(url, options);
+            if (resp.status === 401) {
+                clearAuth();
+                showLoginScreen();
+                throw new Error('Session expired');
+            }
+            return resp;
+        }
+
+        // ========== AUTH SCREENS ==========
+        function showScreen(screenId) {
+            document.querySelectorAll('.auth-screen').forEach(s => s.classList.add('hidden'));
+            const screen = document.getElementById(screenId);
+            if (screen) screen.classList.remove('hidden');
+        }
+
+        function showLoginScreen() {
+            document.querySelector('.header').style.display = 'none';
+            document.querySelector('.controls').style.display = 'none';
+            document.getElementById('time-bar').style.display = 'none';
+            document.getElementById('filter-bar').style.display = 'none';
+            document.getElementById('main-container').style.display = 'none';
+            document.getElementById('floating-nav').style.display = 'none';
+            document.getElementById('admin-panel').style.display = 'none';
+            showScreen('login-pin-screen');
+        }
+
+        function showMainApp() {
+            document.querySelectorAll('.auth-screen').forEach(s => s.classList.add('hidden'));
+            document.querySelector('.header').style.display = '';
+            document.querySelector('.controls').style.display = '';
+            document.getElementById('time-bar').style.display = '';
+            document.getElementById('filter-bar').style.display = '';
+            document.getElementById('main-container').style.display = '';
+            document.getElementById('floating-nav').style.display = '';
+            const adminBtn = document.getElementById('nav-admin');
+            if (adminBtn) adminBtn.style.display = currentUser && currentUser.role === 'admin' ? '' : 'none';
+            startHeartbeat();
+        }
+
+        // ========== PIN LOGIN ==========
+        let pinBuffer = '';
+
+        function pinPress(digit) {
+            if (pinBuffer.length >= 4) return;
+            pinBuffer += digit;
+            updatePinDots();
+            if (pinBuffer.length === 4) {
+                setTimeout(() => submitPin(), 200);
+            }
+        }
+
+        function pinBackspace() {
+            pinBuffer = pinBuffer.slice(0, -1);
+            updatePinDots();
+        }
+
+        function updatePinDots() {
+            for (let i = 0; i < 4; i++) {
+                const dot = document.getElementById('dot-' + i);
+                if (dot) {
+                    dot.classList.toggle('filled', i < pinBuffer.length);
+                    dot.classList.remove('error');
+                }
+            }
+        }
+
+        async function submitPin() {
+            try {
+                const resp = await fetch('/api/auth/pin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: pinBuffer })
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    saveAuth(data.token, data.user);
+                    if (data.user.must_change_password) {
+                        showScreen('set-password-screen');
+                    } else {
+                        showMainApp();
+                        fetchSalesData();
+                    }
+                } else {
+                    for (let i = 0; i < 4; i++) {
+                        const dot = document.getElementById('dot-' + i);
+                        if (dot) dot.classList.add('error');
+                    }
+                    if (data.fallback === 'email_password') {
+                        document.getElementById('pin-fallback').style.display = 'block';
+                        showMessage('pin-message', data.message, 'error');
+                    } else {
+                        showMessage('pin-message', data.message || 'Invalid PIN', 'error');
+                    }
+                }
+            } catch (e) {
+                showMessage('pin-message', 'Connection error', 'error');
+            }
+            pinBuffer = '';
+            setTimeout(updatePinDots, 600);
+        }
+
+        // ========== EMAIL LOGIN ==========
+        async function emailLogin() {
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            if (!email || !password) {
+                showMessage('email-message', 'Enter email and password', 'error');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    saveAuth(data.token, data.user);
+                    if (data.user.must_change_password) {
+                        showScreen('set-password-screen');
+                    } else {
+                        showMainApp();
+                        fetchSalesData();
+                    }
+                } else {
+                    showMessage('email-message', data.message || 'Login failed', 'error');
+                }
+            } catch (e) {
+                showMessage('email-message', 'Connection error', 'error');
+            }
+        }
+
+        // ========== SET PASSWORD ==========
+        async function setPassword() {
+            const pw = document.getElementById('new-password').value;
+            const confirm = document.getElementById('confirm-password').value;
+            if (pw.length < 6) {
+                showMessage('setpw-message', 'Password must be at least 6 characters', 'error');
+                return;
+            }
+            if (pw !== confirm) {
+                showMessage('setpw-message', 'Passwords do not match', 'error');
+                return;
+            }
+            try {
+                const resp = await authFetch('/api/auth/set-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_password: pw })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    if (currentUser) currentUser.must_change_password = false;
+                    localStorage.setItem('bl_auth_user', JSON.stringify(currentUser));
+                    showMainApp();
+                    fetchSalesData();
+                } else {
+                    showMessage('setpw-message', data.detail || data.message || 'Error', 'error');
+                }
+            } catch (e) {
+                showMessage('setpw-message', 'Connection error', 'error');
+            }
+        }
+
+        // ========== RESET REQUEST ==========
+        async function submitResetRequest() {
+            const email = document.getElementById('reset-email').value.trim();
+            if (!email) {
+                showMessage('reset-message', 'Enter your email', 'error');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/auth/reset-request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, reason: document.getElementById('reset-reason').value })
+                });
+                const data = await resp.json();
+                showMessage('reset-message', data.message || 'Request sent', 'success');
+            } catch (e) {
+                showMessage('reset-message', 'Connection error', 'error');
+            }
+        }
+
+        // ========== TEMP PASSWORD ==========
+        async function useTempPassword() {
+            const email = document.getElementById('temp-email').value.trim();
+            const temp = document.getElementById('temp-pw').value;
+            const newPw = document.getElementById('temp-new-pw').value;
+            if (!email || !temp || !newPw) {
+                showMessage('temp-message', 'Fill in all fields', 'error');
+                return;
+            }
+            if (newPw.length < 6) {
+                showMessage('temp-message', 'New password must be at least 6 characters', 'error');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/auth/use-temp-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, temp_password: temp, new_password: newPw })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    saveAuth(data.token, data.user);
+                    showMainApp();
+                    fetchSalesData();
+                } else {
+                    showMessage('temp-message', data.message || 'Failed', 'error');
+                }
+            } catch (e) {
+                showMessage('temp-message', 'Connection error', 'error');
+            }
+        }
+
+        function showMessage(elementId, text, type) {
+            const el = document.getElementById(elementId);
+            if (el) {
+                el.innerHTML = `<div class="auth-message ${type}">${text}</div>`;
+            }
+        }
+
+        // ========== LOGOUT ==========
+        async function doLogout() {
+            try {
+                await authFetch('/api/auth/logout', { method: 'POST' });
+            } catch (e) {}
+            clearAuth();
+            showLoginScreen();
+        }
+
+        // ========== HEARTBEAT & TRACKING ==========
+        function startHeartbeat() {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(async () => {
+                try { await authFetch('/api/auth/heartbeat', { method: 'POST' }); } catch (e) {}
+            }, 30000);
+        }
+
+        function trackAction(action, details) {
+            if (!authToken) return;
+            authFetch('/api/track', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, details })
+            }).catch(() => {});
+        }
+
+        // ========== ADMIN PANEL ==========
+        let currentAdminTab = 'users';
+
+        function switchAdminTab(tab) {
+            currentAdminTab = tab;
+            const tabs = document.querySelectorAll('.admin-tab');
+            const tabNames = ['users', 'sessions', 'screen-time', 'searches', 'activity', 'resets'];
+            tabs.forEach((t, i) => t.classList.toggle('active', tabNames[i] === tab));
+            loadAdminTab(tab);
+        }
+
+        async function loadAdminTab(tab) {
+            const content = document.getElementById('admin-content');
+            if (!content) return;
+            content.innerHTML = '<p style="color:#666">Loading...</p>';
+
+            try {
+                switch (tab) {
+                    case 'users': await loadAdminUsers(content); break;
+                    case 'sessions': await loadAdminSessions(content); break;
+                    case 'screen-time': await loadAdminScreenTime(content); break;
+                    case 'searches': await loadAdminSearches(content); break;
+                    case 'activity': await loadAdminActivity(content); break;
+                    case 'resets': await loadAdminResets(content); break;
+                }
+            } catch (e) {
+                content.innerHTML = `<p style="color:#c00">Error: ${e.message}</p>`;
+            }
+        }
+
+        async function loadAdminUsers(container) {
+            const resp = await authFetch('/api/admin/users');
+            const data = await resp.json();
+            let html = `<div class="admin-header"><h3>Users</h3><button class="admin-btn admin-btn-primary" onclick="showCreateUserModal()">+ Add User</button></div>`;
+            html += '<table class="admin-table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+            (data.users || []).forEach(u => {
+                const status = u.is_banned ? '<span style="color:#dc3545">Banned</span>' : '<span style="color:#28a745">Active</span>';
+                html += `<tr>
+                    <td>${u.email}</td><td>${u.display_name || '-'}</td><td>${u.role}</td><td>${status}</td>
+                    <td>
+                        <button class="admin-btn admin-btn-primary" onclick="showEditUserModal(${u.id}, '${u.display_name || ''}', '${u.role}', ${u.is_banned})">Edit</button>
+                        ${u.is_banned ? `<button class="admin-btn admin-btn-success" onclick="toggleBan(${u.id}, false)">Unban</button>` : `<button class="admin-btn admin-btn-warning" onclick="toggleBan(${u.id}, true)">Ban</button>`}
+                        <button class="admin-btn admin-btn-danger" onclick="deleteUser(${u.id})">Delete</button>
+                    </td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function loadAdminSessions(container) {
+            const resp = await authFetch('/api/admin/sessions');
+            const data = await resp.json();
+            let html = '<div class="admin-header"><h3>Live Sessions</h3></div>';
+            html += '<table class="admin-table"><thead><tr><th>User</th><th>Status</th><th>IP</th><th>Started</th><th>Last Seen</th></tr></thead><tbody>';
+            (data.sessions || []).forEach(s => {
+                const dot = s.is_online ? '<span class="online-dot green"></span>Online' : '<span class="online-dot gray"></span>Away';
+                html += `<tr><td>${s.display_name || s.email}</td><td>${dot}</td><td>${s.ip_address || '-'}</td><td>${s.created_at ? new Date(s.created_at).toLocaleString() : '-'}</td><td>${s.last_heartbeat ? new Date(s.last_heartbeat).toLocaleString() : '-'}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function loadAdminScreenTime(container) {
+            const resp = await authFetch('/api/admin/screen-time');
+            const data = await resp.json();
+            let html = '<div class="admin-header"><h3>Screen Time</h3></div>';
+            html += '<table class="admin-table"><thead><tr><th>User</th><th>Date</th><th>Minutes</th></tr></thead><tbody>';
+            (data.screen_time || []).forEach(s => {
+                html += `<tr><td>${s.display_name || s.email}</td><td>${s.date || '-'}</td><td>${s.minutes}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function loadAdminSearches(container) {
+            const resp = await authFetch('/api/admin/search-history');
+            const data = await resp.json();
+            let html = '<div class="admin-header"><h3>Search History</h3></div>';
+            html += '<table class="admin-table"><thead><tr><th>User</th><th>Time</th><th>Query</th><th>Filters</th></tr></thead><tbody>';
+            (data.searches || []).forEach(s => {
+                html += `<tr><td>${s.email}</td><td>${s.timestamp ? new Date(s.timestamp).toLocaleString() : '-'}</td><td>${s.query || '-'}</td><td>${s.filters || '-'}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function loadAdminActivity(container, page = 1) {
+            const resp = await authFetch(`/api/admin/activity?page=${page}&limit=50`);
+            const data = await resp.json();
+            let html = '<div class="admin-header"><h3>Activity Log</h3></div>';
+            html += '<table class="admin-table"><thead><tr><th>User</th><th>Time</th><th>Action</th><th>Details</th></tr></thead><tbody>';
+            (data.activity || []).forEach(a => {
+                html += `<tr><td>${a.display_name || a.email}</td><td>${a.timestamp ? new Date(a.timestamp).toLocaleString() : '-'}</td><td>${a.action}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${a.details ? JSON.stringify(a.details).slice(0, 100) : '-'}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            if (data.pages > 1) {
+                html += '<div style="margin-top:12px;text-align:center">';
+                for (let i = 1; i <= data.pages; i++) {
+                    html += `<button class="admin-btn ${i === page ? 'admin-btn-primary' : ''}" style="margin:2px" onclick="loadAdminActivity(document.getElementById('admin-content'), ${i})">${i}</button>`;
+                }
+                html += '</div>';
+            }
+            container.innerHTML = html;
+        }
+
+        async function loadAdminResets(container) {
+            const resp = await authFetch('/api/admin/reset-requests');
+            const data = await resp.json();
+            let html = '<div class="admin-header"><h3>Password Reset Requests</h3></div>';
+            html += '<table class="admin-table"><thead><tr><th>User</th><th>Requested</th><th>Reason</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+            (data.requests || []).forEach(r => {
+                const actions = r.status === 'pending'
+                    ? `<button class="admin-btn admin-btn-success" onclick="fulfillReset(${r.id})">Generate Temp Password</button> <button class="admin-btn admin-btn-danger" onclick="rejectReset(${r.id})">Reject</button>`
+                    : r.status;
+                html += `<tr><td>${r.display_name || r.email}</td><td>${r.requested_at ? new Date(r.requested_at).toLocaleString() : '-'}</td><td>${r.reason || '-'}</td><td>${r.status}</td><td>${actions}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // Admin CRUD operations
+        function showCreateUserModal() {
+            const modal = document.getElementById('admin-modal-overlay');
+            const content = document.getElementById('admin-modal-content');
+            content.innerHTML = `
+                <h3>Create User</h3>
+                <div class="auth-field"><label>Email</label><input type="email" id="modal-email"></div>
+                <div class="auth-field"><label>Display Name</label><input type="text" id="modal-name"></div>
+                <div class="auth-field"><label>PIN (4 digits)</label><input type="text" id="modal-pin" maxlength="4"></div>
+                <div class="auth-field"><label>Role</label><select id="modal-role" style="width:100%;padding:12px;border:1px solid #d0d0d0;border-radius:8px"><option value="user">User</option><option value="admin">Admin</option></select></div>
+                <div style="display:flex;gap:8px;margin-top:16px">
+                    <button class="auth-btn" onclick="createUser()">Create</button>
+                    <button class="auth-btn" style="background:#6c757d" onclick="closeAdminModal()">Cancel</button>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+        }
+
+        function showEditUserModal(id, name, role, isBanned) {
+            const modal = document.getElementById('admin-modal-overlay');
+            const content = document.getElementById('admin-modal-content');
+            content.innerHTML = `
+                <h3>Edit User #${id}</h3>
+                <div class="auth-field"><label>Display Name</label><input type="text" id="modal-edit-name" value="${name}"></div>
+                <div class="auth-field"><label>New PIN (leave empty to keep)</label><input type="text" id="modal-edit-pin" maxlength="4"></div>
+                <div class="auth-field"><label>Role</label><select id="modal-edit-role" style="width:100%;padding:12px;border:1px solid #d0d0d0;border-radius:8px"><option value="user" ${role==='user'?'selected':''}>User</option><option value="admin" ${role==='admin'?'selected':''}>Admin</option></select></div>
+                <div style="display:flex;gap:8px;margin-top:16px">
+                    <button class="auth-btn" onclick="updateUser(${id})">Save</button>
+                    <button class="auth-btn" style="background:#6c757d" onclick="closeAdminModal()">Cancel</button>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+        }
+
+        function closeAdminModal() {
+            document.getElementById('admin-modal-overlay').classList.add('hidden');
+        }
+
+        async function createUser() {
+            const email = document.getElementById('modal-email').value.trim();
+            const name = document.getElementById('modal-name').value.trim();
+            const pin = document.getElementById('modal-pin').value.trim();
+            const role = document.getElementById('modal-role').value;
+            if (!email) return alert('Email is required');
+            try {
+                const resp = await authFetch('/api/admin/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, display_name: name, pin, role })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    closeAdminModal();
+                    loadAdminTab('users');
+                } else {
+                    alert(data.detail || 'Error creating user');
+                }
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function updateUser(id) {
+            const name = document.getElementById('modal-edit-name').value.trim();
+            const pin = document.getElementById('modal-edit-pin').value.trim();
+            const role = document.getElementById('modal-edit-role').value;
+            const body = { display_name: name, role };
+            if (pin) body.pin = pin;
+            try {
+                await authFetch(`/api/admin/users/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                closeAdminModal();
+                loadAdminTab('users');
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function toggleBan(id, ban) {
+            if (!confirm(ban ? 'Ban this user?' : 'Unban this user?')) return;
+            try {
+                await authFetch(`/api/admin/users/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_banned: ban })
+                });
+                loadAdminTab('users');
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function deleteUser(id) {
+            if (!confirm('Delete this user permanently?')) return;
+            try {
+                await authFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+                loadAdminTab('users');
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function fulfillReset(id) {
+            try {
+                const resp = await authFetch(`/api/admin/reset-requests/${id}/fulfill`, { method: 'POST' });
+                const data = await resp.json();
+                if (data.success) {
+                    alert('Temp password: ' + data.temp_password + '\n\nGive this to the user.');
+                    loadAdminTab('resets');
+                }
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function rejectReset(id) {
+            if (!confirm('Reject this request?')) return;
+            try {
+                await authFetch(`/api/admin/reset-requests/${id}/reject`, { method: 'POST' });
+                loadAdminTab('resets');
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        // ========== EXISTING DASHBOARD CODE ==========
         const translations = {
             en: {
-                dashboardTitle: 'BL Sales Dashboard',
                 products: 'Products',
                 unitsSold: 'Units Sold',
                 orders: 'Orders',
-                lastUpdated: 'Last updated',
-                nextRefresh: 'Next refresh in',
-                refreshNow: 'Refresh Now',
-                downloadExcel: 'Download Excel',
-                categoryLabel: 'Category',
-                purchaseOrderLabel: 'Purchase Order',
-                searchLabel: 'Search',
-                allCategories: 'All Categories',
-                allPOs: 'All Purchase Orders',
-                searchPlaceholder: 'Search by name, SKU, or paste Shopify URL...',
-                colImage: 'Image',
-                colName: 'Product Name',
-                colSku: 'SKU',
-                colCategory: 'Category',
-                colUnitsSold: 'Units Sold',
-                colStock: 'Stock',
-                showing: 'Showing',
-                of: 'of',
-                productsSuffix: 'products',
-                totalUnitsSold: 'Total units sold',
-                outOfStock: 'Out of stock',
-                salesStats: 'Sales Statistics',
-                totalUnitsSoldDetail: 'Total Units Sold',
-                totalRevenueDetail: 'Total Revenue',
-                avgPricePerUnit: 'Avg Price per Unit',
-                salesChannels: 'Sales Channels',
-                noChannelData: 'No channel data',
-                purchaseOrderHistory: 'Purchase Order History',
-                noPOs: 'No purchase orders found',
-                qtyOrdered: 'qty ordered',
-                costPerUnit: 'cost/unit',
-                stockLevel: 'Stock Level',
-                currentStock: 'Current Stock',
-                units: 'units',
-                loadingData: 'Loading sales data...',
-                noData: 'No data available',
-                errorLoading: 'Error loading data',
-                tryRefresh: 'Please try refreshing the page.',
-                timeFrame: 'Time Frame',
-                allTime: 'All Time',
-                today: 'Today',
-                yesterday: 'Yesterday',
-                last7Days: 'Last 7 Days',
-                last30Days: 'Last 30 Days',
-                thisMonth: 'This Month',
-                custom: 'Custom',
-                from: 'From',
-                to: 'To',
-                apply: 'Apply',
-                filters: 'Filters',
-                applyFilters: 'Apply Filters',
-                navDashboard: 'Dashboard',
-                navTime: 'Time',
-                navFilter: 'Filter',
-                navExport: 'Export',
-                navRefresh: 'Refresh',
                 salesByChannel: 'Sales by Channel',
                 clickToFilter: 'click a bar to filter table',
                 financials: 'FINANCIALS',
                 revenue: 'Revenue',
                 netRevenue: '- VAT 23%',
                 profit: 'Profit',
-                margin: 'Margin'
+                margin: 'Margin',
+                lastUpdated: 'Last updated',
+                nextRefresh: 'Next refresh in',
+                refresh: 'Refresh',
+                export: 'Export',
+                period: 'Period',
+                from: 'From',
+                to: 'To',
+                apply: 'Apply',
+                category: 'Category',
+                po: 'Purchase Order',
+                search: 'Search',
+                image: 'Image',
+                sku: 'SKU',
+                units: 'Units',
+                stock: 'Stock',
+                details: 'Details',
+                baselinkerSales: 'BaseLinker Sales',
+                shopifySales: 'Shopify Sales',
+                allegroSales: 'Allegro Sales',
+                olxSales: 'OLX Sales',
+                otherSales: 'Other Sales',
+                salesByChannel: 'Sales by Channel',
+                stockLevel: 'Stock Level',
+                currentStock: 'Current Stock',
+                units: 'units'
             },
             vi: {
-                dashboardTitle: 'B\u1ea3ng \u0111i\u1ec1u khi\u1ec3n BL',
-                products: 'S\u1ea3n ph\u1ea9m',
-                unitsSold: 'S\u1ed1 l\u01b0\u1ee3ng \u0111\u00e3 b\u00e1n',
-                orders: '\u0110\u01a1n h\u00e0ng',
-                lastUpdated: 'C\u1eadp nh\u1eadt l\u1ea7n cu\u1ed1i',
-                nextRefresh: 'L\u00e0m m\u1edbi sau',
-                refreshNow: 'L\u00e0m m\u1edbi ngay',
-                downloadExcel: 'T\u1ea3i Excel',
-                categoryLabel: 'Danh m\u1ee5c',
-                purchaseOrderLabel: '\u0110\u01a1n mua h\u00e0ng',
-                searchLabel: 'T\u00ecm ki\u1ebfm',
-                allCategories: 'T\u1ea5t c\u1ea3 danh m\u1ee5c',
-                allPOs: 'T\u1ea5t c\u1ea3 \u0111\u01a1n mua',
-                searchPlaceholder: 'T\u00ecm theo t\u00ean, SKU, ho\u1eb7c d\u00e1n URL Shopify...',
-                colImage: 'H\u00ecnh \u1ea3nh',
-                colName: 'T\u00ean s\u1ea3n ph\u1ea9m',
-                colSku: 'SKU',
-                colCategory: 'Danh m\u1ee5c',
-                colUnitsSold: '\u0110\u00e3 b\u00e1n',
-                colStock: 'T\u1ed3n kho',
-                showing: 'Hi\u1ec3n th\u1ecb',
-                of: 'tr\u00ean',
-                productsSuffix: 's\u1ea3n ph\u1ea9m',
-                totalUnitsSold: 'T\u1ed5ng \u0111\u00e3 b\u00e1n',
-                outOfStock: 'H\u1ebft h\u00e0ng',
-                salesStats: 'Th\u1ed1ng k\u00ea b\u00e1n h\u00e0ng',
-                totalUnitsSoldDetail: 'T\u1ed5ng s\u1ed1 l\u01b0\u1ee3ng b\u00e1n',
-                totalRevenueDetail: 'T\u1ed5ng doanh thu',
-                avgPricePerUnit: 'Gi\u00e1 trung b\u00ecnh/\u0111\u01a1n v\u1ecb',
-                salesChannels: 'K\u00eanh b\u00e1n h\u00e0ng',
-                noChannelData: 'Kh\u00f4ng c\u00f3 d\u1eef li\u1ec7u k\u00eanh',
-                purchaseOrderHistory: 'L\u1ecbch s\u1eed \u0111\u01a1n mua',
-                noPOs: 'Kh\u00f4ng t\u00ecm th\u1ea5y \u0111\u01a1n mua',
-                qtyOrdered: 's\u1ed1 l\u01b0\u1ee3ng \u0111\u1eb7t',
-                costPerUnit: 'gi\u00e1/\u0111v',
-                stockLevel: 'M\u1ee9c t\u1ed3n kho',
-                currentStock: 'T\u1ed3n kho hi\u1ec7n t\u1ea1i',
-                units: '\u0111\u01a1n v\u1ecb',
-                loadingData: '\u0110ang t\u1ea3i d\u1eef li\u1ec7u...',
-                noData: 'Kh\u00f4ng c\u00f3 d\u1eef li\u1ec7u',
-                errorLoading: 'L\u1ed7i t\u1ea3i d\u1eef li\u1ec7u',
-                tryRefresh: 'Vui l\u00f2ng t\u1ea3i l\u1ea1i trang.',
-                timeFrame: 'Khung th\u1eddi gian',
-                allTime: 'T\u1ea5t c\u1ea3',
-                today: 'H\u00f4m nay',
-                yesterday: 'H\u00f4m qua',
-                last7Days: '7 ng\u00e0y qua',
-                last30Days: '30 ng\u00e0y qua',
-                thisMonth: 'Th\u00e1ng n\u00e0y',
-                custom: 'T\u00f9y ch\u1ecdn',
-                from: 'T\u1eeb',
-                to: '\u0110\u1ebfn',
-                apply: '\u00c1p d\u1ee5ng',
-                filters: 'B\u1ed9 l\u1ecdc',
-                applyFilters: '\u00c1p d\u1ee5ng b\u1ed9 l\u1ecdc',
-                navDashboard: 'B\u1ea3ng',
-                navTime: 'Th\u1eddi gian',
-                navFilter: 'L\u1ecdc',
-                navExport: 'Xu\u1ea5t',
-                navRefresh: 'L\u00e0m m\u1edbi',
-                salesByChannel: 'K\u00eanh b\u00e1n h\u00e0ng',
-                clickToFilter: 'nh\u1ea5p v\u00e0o thanh \u0111\u1ec3 l\u1ecdc b\u1ea3ng',
-                financials: 'T\u00c0I CH\u00cdNH',
+                products: 'Sản phẩm',
+                unitsSold: 'Đã bán',
+                orders: 'Đơn hàng',
+                salesByChannel: 'Doanh số theo kênh',
+                clickToFilter: 'bấm để lọc bảng',
+                financials: 'TÀI CHÍNH',
                 revenue: 'Doanh thu',
                 netRevenue: '- VAT 23%',
-                profit: 'L\u1ee3i nhu\u1eadn',
-                margin: 'Bi\u00ean l\u1ee3i'
+                profit: 'Lợi nhuận',
+                margin: 'Tỷ lệ',
+                lastUpdated: 'Cập nhật lần cuối',
+                nextRefresh: 'Cập nhật tiếp theo trong',
+                refresh: 'Làm mới',
+                export: 'Xuất',
+                period: 'Kỳ',
+                from: 'Từ',
+                to: 'Đến',
+                apply: 'Áp dụng',
+                category: 'Danh mục',
+                po: 'Đơn mua hàng',
+                search: 'Tìm kiếm',
+                image: 'Hình ảnh',
+                sku: 'SKU',
+                units: 'Đơn vị',
+                stock: 'Kho',
+                details: 'Chi tiết',
+                baselinkerSales: 'Doanh số BaseLinker',
+                shopifySales: 'Doanh số Shopify',
+                allegroSales: 'Doanh số Allegro',
+                olxSales: 'Doanh số OLX',
+                otherSales: 'Doanh số khác',
+                salesByChannel: 'Doanh số theo kênh',
+                stockLevel: 'Mức kho hàng',
+                currentStock: 'Kho hiện tại',
+                units: 'đơn vị'
             }
         };
 
-        let currentLang = localStorage.getItem('dashboard_lang') || 'en';
-
-        function imgError(el) {
-            el.outerHTML = '<div class="no-image">No img</div>';
-        }
+        let currentLanguage = localStorage.getItem('bl_language') || 'en';
+        let salesData = [];
+        let filteredData = [];
+        let sortColumn = 'units_sold';
+        let sortDirection = 'desc';
+        let expandedRowKey = null;
+        let chartInstance = null;
+        let activeDateFrom = null;
+        let activeDateTo = null;
+        let currentMobileView = 'dashboard';
+        let countdownInterval = null;
+        let lastRefreshTime = null;
 
         function t(key) {
-            return (translations[currentLang] && translations[currentLang][key]) || translations.en[key] || key;
-        }
-
-        function toggleLanguage() {
-            currentLang = currentLang === 'en' ? 'vi' : 'en';
-            localStorage.setItem('dashboard_lang', currentLang);
-            applyLanguage();
-            if (salesData) { renderData(); updateHeader(); }
+            return translations[currentLanguage][key] || key;
         }
 
         function applyLanguage() {
-            const enEl = document.getElementById('lang-en');
-            const viEl = document.getElementById('lang-vi');
-            if (currentLang === 'en') {
-                enEl.className = 'active-lang'; viEl.className = 'inactive-lang';
-            } else {
-                enEl.className = 'inactive-lang'; viEl.className = 'active-lang';
-            }
-            document.getElementById('dashboard-title').textContent = t('dashboardTitle');
             document.querySelectorAll('[data-i18n]').forEach(el => {
-                const key = el.getAttribute('data-i18n');
-                if (el.tagName === 'OPTION') { el.textContent = t(key); }
-                else if (el.tagName === 'INPUT') { /* skip */ }
-                else { el.textContent = t(key); }
+                el.textContent = t(el.dataset.i18n);
             });
-            const searchInput = document.getElementById('filter-search');
-            if (searchInput) searchInput.placeholder = t('searchPlaceholder');
-            const mobileSearch = document.getElementById('mobile-filter-search');
-            if (mobileSearch) mobileSearch.placeholder = t('searchPlaceholder');
-        }
-
-        // ========== MOBILE NAVIGATION ==========
-        let currentMobileView = 'dashboard';
-
-        function switchMobileView(view) {
-            currentMobileView = view;
-            // Update nav buttons
-            document.querySelectorAll('.floating-nav button').forEach(btn => btn.classList.remove('active'));
-            const navBtn = document.getElementById('nav-' + view);
-            if (navBtn) navBtn.classList.add('active');
-
-            // Toggle views
-            document.getElementById('main-container').style.display = (view === 'dashboard') ? '' : 'none';
-            document.getElementById('mobile-time-view').style.display = (view === 'time') ? 'block' : 'none';
-            document.getElementById('mobile-filter-view').style.display = (view === 'filter') ? 'block' : 'none';
-
-            // Scroll to top on view switch
-            window.scrollTo(0, 0);
-        }
-
-        function mobileSelectPreset(preset) {
-            // Update mobile UI
-            document.querySelectorAll('#mobile-preset-grid .mobile-preset-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.getAttribute('data-preset') === preset);
-            });
-            // Call the same preset logic
-            selectPreset(preset);
-            // Switch back to dashboard after selection
-            setTimeout(() => switchMobileView('dashboard'), 300);
-        }
-
-        function mobileApplyCustomRange() {
-            const fromVal = document.getElementById('mobile-date-from').value;
-            const toVal = document.getElementById('mobile-date-to').value;
-            if (fromVal) activeDateFrom = fromVal;
-            if (toVal) activeDateTo = toVal;
-            activePreset = 'custom';
-            // Sync to desktop inputs
-            document.getElementById('date-from').value = fromVal;
-            document.getElementById('date-to').value = toVal;
-            // Reset preset highlights
-            document.querySelectorAll('#mobile-preset-grid .mobile-preset-btn').forEach(btn => btn.classList.remove('active'));
-            fetchSalesData();
-            setTimeout(() => switchMobileView('dashboard'), 300);
-        }
-
-        function mobileApplyFilters() {
-            // Sync mobile filters to desktop
-            document.getElementById('filter-category').value = document.getElementById('mobile-filter-category').value;
-            document.getElementById('filter-po').value = document.getElementById('mobile-filter-po').value;
-            document.getElementById('filter-search').value = document.getElementById('mobile-filter-search').value;
-            applyFilters();
-            switchMobileView('dashboard');
-        }
-
-        // ========== TIME FRAME STATE ==========
-        let activePreset = 'all';
-        let activeDateFrom = '';
-        let activeDateTo = '';
-
-        function formatDate(d) {
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${y}-${m}-${day}`;
-        }
-
-        function selectPreset(preset) {
-            activePreset = preset;
-            const now = new Date();
-            const today = formatDate(now);
-
-            switch (preset) {
-                case 'all':
-                    activeDateFrom = '';
-                    activeDateTo = '';
-                    break;
-                case 'today':
-                    activeDateFrom = today;
-                    activeDateTo = today;
-                    break;
-                case 'yesterday': {
-                    const y = new Date(now);
-                    y.setDate(y.getDate() - 1);
-                    activeDateFrom = formatDate(y);
-                    activeDateTo = formatDate(y);
-                    break;
-                }
-                case '7d': {
-                    const d = new Date(now);
-                    d.setDate(d.getDate() - 7);
-                    activeDateFrom = formatDate(d);
-                    activeDateTo = today;
-                    break;
-                }
-                case '30d': {
-                    const d = new Date(now);
-                    d.setDate(d.getDate() - 30);
-                    activeDateFrom = formatDate(d);
-                    activeDateTo = today;
-                    break;
-                }
-                case 'month': {
-                    const d = new Date(now);
-                    d.setDate(1); // first day of current month
-                    activeDateFrom = formatDate(d);
-                    activeDateTo = today;
-                    break;
-                }
-                case 'custom':
-                    updateTimeBarUI();
-                    return;
-            }
-
-            updateTimeBarUI();
-            fetchSalesData();
-        }
-
-        function applyCustomRange() {
-            const fromInput = document.getElementById('date-from').value;
-            const toInput = document.getElementById('date-to').value;
-            if (fromInput) activeDateFrom = fromInput;
-            if (toInput) activeDateTo = toInput;
-            if (activeDateFrom || activeDateTo) {
-                fetchSalesData();
-            }
-        }
-
-        function updateTimeBarUI() {
-            // Desktop preset buttons
-            document.querySelectorAll('.time-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.getAttribute('data-preset') === activePreset);
-            });
-            // Desktop date range
-            const dateRange = document.getElementById('date-range');
-            if (activePreset === 'custom') {
-                dateRange.classList.add('visible');
-                if (!document.getElementById('date-from').value) {
-                    const d = new Date(); d.setDate(d.getDate() - 7);
-                    document.getElementById('date-from').value = formatDate(d);
-                }
-                if (!document.getElementById('date-to').value) {
-                    document.getElementById('date-to').value = formatDate(new Date());
-                }
+            if (currentLanguage === 'en') {
+                document.getElementById('lang-en').className = 'active-lang';
+                document.getElementById('lang-vi').className = 'inactive-lang';
             } else {
-                dateRange.classList.remove('visible');
+                document.getElementById('lang-en').className = 'inactive-lang';
+                document.getElementById('lang-vi').className = 'active-lang';
             }
-            // Mobile preset buttons sync
-            document.querySelectorAll('#mobile-preset-grid .mobile-preset-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.getAttribute('data-preset') === activePreset);
-            });
         }
 
-        // ========== DATA ==========
-        let salesData = null;
-        let purchaseOrders = [];
-        let sortColumn = 'units_sold';
-        let sortDirection = 'desc';
-        let countdownInterval = null;
-        let nextRefreshTime = null;
-        let expandedRowKey = null;
-        let chartInstance = null;
-        let activeChannelFilter = null;
+        function toggleLanguage() {
+            currentLanguage = currentLanguage === 'en' ? 'vi' : 'en';
+            localStorage.setItem('bl_language', currentLanguage);
+            applyLanguage();
+        }
 
         async function fetchSalesData() {
             try {
-                let url = '/api/sales';
                 const params = new URLSearchParams();
                 if (activeDateFrom) params.set('date_from', activeDateFrom);
                 if (activeDateTo) params.set('date_to', activeDateTo);
-                if (params.toString()) url += '?' + params.toString();
+                const qs = params.toString();
+                const url = '/api/sales' + (qs ? '?' + qs : '');
 
                 const [salesResp, poResp] = await Promise.all([
-                    fetch(url),
-                    fetch('/api/purchase-orders')
+                    authFetch(url),
+                    authFetch('/api/purchase-orders')
                 ]);
-                if (!salesResp.ok) throw new Error('Failed to fetch data');
-                salesData = await salesResp.json();
-                const poData = await poResp.json();
-                purchaseOrders = poData.purchase_orders || [];
-                populateFilters();
-                renderData();
-                updateHeader();
-                startCountdown();
+
+                const salesDataResp = await salesResp.json();
+                const poDataResp = await poResp.json();
+
+                salesData = salesDataResp.sales || [];
+                window.purchaseOrders = poDataResp.purchase_orders || [];
+
                 applyLanguage();
+                updateTimeBarUI();
+                renderData();
+                updateCountdown();
+                lastRefreshTime = new Date();
+
+                trackAction('view_sales', { date_from: activeDateFrom, date_to: activeDateTo });
             } catch (error) {
-                document.getElementById('content').innerHTML = `<div class="error"><p>${t('errorLoading')}: ${error.message}</p><p>${t('tryRefresh')}</p></div>`;
+                document.getElementById('content').innerHTML = '<div class="error">Error loading data</div>';
             }
         }
 
-        function updateHeader() {
-            if (!salesData) return;
-            document.getElementById('total-variants').textContent = salesData.total_variants;
-            document.getElementById('total-units').textContent = salesData.total_units_sold.toLocaleString();
-            document.getElementById('total-orders').textContent = salesData.total_orders.toLocaleString();
-            const luEl = document.getElementById('last-updated');
-            if (luEl) luEl.textContent = new Date(salesData.last_updated).toLocaleTimeString();
-            renderGlobalChannelBars();
-            updateFinancials();
+        function updateCountdown() {
+            if (countdownInterval) clearInterval(countdownInterval);
+            const updateIntervalSeconds = 300;
+            let secondsLeft = updateIntervalSeconds;
+            const updateCountdownDisplay = () => {
+                const mins = Math.floor(secondsLeft / 60);
+                const secs = secondsLeft % 60;
+                const display = `${mins}:${secs.toString().padStart(2, '0')}`;
+                document.getElementById('countdown').textContent = display;
+                secondsLeft--;
+                if (secondsLeft < 0) {
+                    secondsLeft = updateIntervalSeconds;
+                }
+            };
+            updateCountdownDisplay();
+            countdownInterval = setInterval(updateCountdownDisplay, 1000);
         }
 
-        // ========== FINANCIALS ==========
-        function updateFinancials() {
-            if (!salesData) return;
-            const fmtPLN = (v) => v.toLocaleString('pl-PL', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        function updateTimeBarUI() {
+            const now = new Date();
+            let from = new Date(now);
+            let to = new Date(now);
 
-            const revEl = document.getElementById('fin-revenue');
-            const netEl = document.getElementById('fin-net-revenue');
-            const profitEl = document.getElementById('fin-profit');
-            const marginEl = document.getElementById('fin-margin');
-            const profitRow = document.getElementById('fin-profit-row');
-
-            if (revEl) revEl.textContent = fmtPLN(salesData.total_revenue || 0) + ' PLN';
-            if (netEl) netEl.textContent = fmtPLN(salesData.net_revenue || 0) + ' PLN';
-            if (profitEl) profitEl.textContent = fmtPLN(salesData.profit || 0) + ' PLN';
-            if (marginEl) marginEl.textContent = (salesData.profit_margin || 0) + '%';
-
-            // Color profit row red if negative
-            if (profitRow) {
-                profitRow.classList.toggle('negative', (salesData.profit || 0) < 0);
-            }
-        }
-
-        // ========== CHANNEL BARS (Interactive) ==========
-        function renderGlobalChannelBars() {
-            const container = document.getElementById('channel-bars-container');
-            if (!container) return;
-
-            const breakdown = salesData.channel_breakdown || [];
-            if (breakdown.length === 0) {
-                container.innerHTML = '<span style="opacity:0.6;font-size:12px">No channel data</span>';
+            if (activeDateFrom && activeDateTo) {
+                document.getElementById('btn-today').classList.remove('active');
+                document.getElementById('btn-week').classList.remove('active');
+                document.getElementById('btn-month').classList.remove('active');
+                document.getElementById('btn-year').classList.remove('active');
+                document.getElementById('btn-custom').classList.add('active');
                 return;
             }
 
-            const maxUnits = breakdown[0].units; // already sorted desc
-            const channelColors = {
-                'Allegro - Marbily': '#ff8c00',
-                'Allegro - Glamova': '#e83e8c',
-                'Allegro - MaintagHome': '#6610f2',
-                'Allegro - GlamovaPolska': '#17a2b8',
-                'Shop - Marbily': '#28a745',
-                'Empik - Marbily': '#fd7e14',
-                'Erli_connector - marbily.com': '#20c997',
-                'Olx - marbily.com': '#6c757d',
-                'Ceneo - CENEO MARBILY': '#ffc107',
-            };
-            const defaultColors = ['#ff8c00', '#6610f2', '#e83e8c', '#17a2b8', '#28a745', '#fd7e14', '#20c997', '#6c757d'];
-
-            let html = '';
-            breakdown.forEach((ch, i) => {
-                const pct = maxUnits > 0 ? Math.max(2, (ch.units / maxUnits) * 100) : 0;
-                const color = channelColors[ch.channel] || defaultColors[i % defaultColors.length];
-                const isActive = activeChannelFilter === ch.channel;
-                const isDimmed = activeChannelFilter && !isActive;
-                html += `<div class="channel-bar-item ${isActive ? 'bar-active' : ''} ${isDimmed ? 'bar-dimmed' : ''}"
-                              onclick="toggleChannelFilter('${escapeHtml(ch.channel)}')"
-                              title="${escapeHtml(ch.channel)}">
-                    <span class="bar-label" title="${escapeHtml(ch.channel)}">${escapeHtml(ch.channel)}</span>
-                    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
-                    <span class="bar-value">${ch.units}</span>
-                </div>`;
-            });
-            container.innerHTML = html;
+            document.getElementById('btn-custom').classList.remove('active');
+            document.getElementById('btn-today').classList.add('active');
+            document.getElementById('btn-week').classList.remove('active');
+            document.getElementById('btn-month').classList.remove('active');
+            document.getElementById('btn-year').classList.remove('active');
         }
 
-        function toggleChannelFilter(channel) {
-            activeChannelFilter = (activeChannelFilter === channel) ? null : channel;
-            renderGlobalChannelBars();
-            renderData();
-        }
+        function setTimePeriod(period) {
+            const now = new Date();
+            let from = new Date(now);
+            let to = new Date(now);
 
-        function startCountdown() {
-            if (!salesData || !salesData.next_refresh) return;
-            nextRefreshTime = new Date(salesData.next_refresh);
-            if (countdownInterval) clearInterval(countdownInterval);
-            countdownInterval = setInterval(() => {
-                const diff = Math.max(0, Math.floor((nextRefreshTime - new Date()) / 1000));
-                const minutes = Math.floor(diff / 60);
-                const seconds = (diff % 60).toString().padStart(2, '0');
-                const cdEl = document.getElementById('countdown');
-                if (cdEl) cdEl.textContent = `${minutes}:${seconds}`;
-                if (diff <= 0) fetchSalesData();
-            }, 1000);
-        }
+            if (period === 'week') {
+                from.setDate(now.getDate() - 7);
+            } else if (period === 'month') {
+                from.setMonth(now.getMonth() - 1);
+            } else if (period === 'year') {
+                from.setFullYear(now.getFullYear() - 1);
+            }
 
-        // ========== FILTERS ==========
-        function populateFilters() {
-            if (!salesData || !salesData.products) return;
+            activeDateFrom = formatDate(from);
+            activeDateTo = formatDate(to);
+            updateTimeBarUI();
+            document.getElementById('date-range').classList.remove('visible');
 
-            const categories = {};
-            salesData.products.forEach(p => {
-                const cat = p.category || 'Other';
-                categories[cat] = (categories[cat] || 0) + 1;
+            for (let btn of document.querySelectorAll('.mobile-preset-btn')) {
+                btn.classList.remove('active');
+            }
+            document.querySelectorAll('.mobile-preset-btn').forEach(btn => {
+                if (btn.textContent.toLowerCase() === period) btn.classList.add('active');
             });
 
-            // Desktop + Mobile category
-            ['filter-category', 'mobile-filter-category'].forEach(id => {
-                const sel = document.getElementById(id);
-                if (!sel) return;
-                const currentVal = sel.value;
-                sel.innerHTML = `<option value="" data-i18n="allCategories">${t('allCategories')}</option>`;
-                Object.keys(categories).sort().forEach(cat => {
-                    const opt = document.createElement('option');
-                    opt.value = cat;
-                    opt.textContent = `${cat} (${categories[cat]})`;
-                    sel.appendChild(opt);
-                });
-                sel.value = currentVal;
-            });
-
-            // Desktop + Mobile PO
-            ['filter-po', 'mobile-filter-po'].forEach(id => {
-                const sel = document.getElementById(id);
-                if (!sel) return;
-                const currentVal = sel.value;
-                sel.innerHTML = `<option value="" data-i18n="allPOs">${t('allPOs')}</option>`;
-                purchaseOrders.forEach(po => {
-                    const opt = document.createElement('option');
-                    opt.value = String(po.po_id);
-                    opt.textContent = `${po.document_number} (${po.items_count} items)`;
-                    sel.appendChild(opt);
-                });
-                sel.value = currentVal;
-            });
+            fetchSalesData();
         }
 
-        function getFilteredProducts() {
-            if (!salesData || !salesData.products) return [];
-            let products = salesData.products;
+        function toggleCustomDateRange() {
+            document.getElementById('date-range').classList.toggle('visible');
+        }
 
-            // Channel filter (from clicking channel bars)
-            if (activeChannelFilter) {
-                products = products.filter(p =>
-                    p.sales_by_channel && Object.keys(p.sales_by_channel).includes(activeChannelFilter)
-                );
+        function formatDate(d) {
+            return d.toISOString().split('T')[0];
+        }
+
+        function applyCustomDateRange() {
+            const from = document.getElementById('date-from').value;
+            const to = document.getElementById('date-to').value;
+            const mobileFrom = document.getElementById('mobile-date-from').value;
+            const mobileTo = document.getElementById('mobile-date-to').value;
+
+            activeDateFrom = from || mobileFrom;
+            activeDateTo = to || mobileTo;
+
+            if (!activeDateFrom || !activeDateTo) {
+                alert('Please select both dates');
+                return;
             }
 
-            const catFilter = document.getElementById('filter-category').value;
-            if (catFilter) {
-                products = products.filter(p => p.category === catFilter);
+            document.getElementById('date-range').classList.remove('visible');
+            for (let btn of document.querySelectorAll('.mobile-preset-btn')) {
+                btn.classList.remove('active');
             }
-
-            const poFilter = document.getElementById('filter-po').value;
-            if (poFilter) {
-                const po = purchaseOrders.find(p => String(p.po_id) === poFilter);
-                if (po && po.product_ids && po.product_ids.length > 0) {
-                    // Filter by BaseLinker Variant ID — exact match
-                    const blIdSet = new Set(po.product_ids.map(id => String(id)));
-                    products = products.filter(p => blIdSet.has(String(p.bl_product_id || '')));
-                }
-            }
-
-            const searchVal = document.getElementById('filter-search').value.trim();
-            if (searchVal) {
-                const variantMatch = searchVal.match(/[?&]variant=(\d+)/);
-                if (variantMatch) {
-                    const vid = variantMatch[1];
-                    products = products.filter(p => p.shopify_variant_id === vid);
-                } else {
-                    const q = searchVal.toLowerCase();
-                    products = products.filter(p =>
-                        (p.product_name || '').toLowerCase().includes(q) ||
-                        (p.sku || '').toLowerCase().includes(q) ||
-                        (p.bl_product_id || '').includes(q) ||
-                        (p.category || '').toLowerCase().includes(q)
-                    );
-                }
-            }
-
-            return products;
+            fetchSalesData();
         }
 
         function applyFilters() {
             expandedRowKey = null;
             if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+            trackAction('filter', { category: document.getElementById('filter-category').value, po: document.getElementById('filter-po').value, search: document.getElementById('filter-search').value });
             renderData();
         }
 
-        // ========== RENDER ==========
-        function renderData() {
-            if (!salesData || !salesData.products) {
-                document.getElementById('content').innerHTML = `<div class="loading">${t('noData')}</div>`;
-                return;
-            }
+        function applyMobileFilters() {
+            const cat = document.getElementById('mobile-filter-category').value;
+            const po = document.getElementById('mobile-filter-po').value;
+            const search = document.getElementById('mobile-filter-search').value;
 
-            const allProducts = getFilteredProducts();
-            const products = [...allProducts].sort((a, b) => {
-                let aVal = a[sortColumn];
-                let bVal = b[sortColumn];
-                if (typeof aVal === 'string') { aVal = aVal.toLowerCase(); bVal = (bVal || '').toLowerCase(); }
-                if (sortDirection === 'asc') return aVal > bVal ? 1 : -1;
-                return aVal < bVal ? 1 : -1;
+            document.getElementById('filter-category').value = cat;
+            document.getElementById('filter-po').value = po;
+            document.getElementById('filter-search').value = search;
+
+            applyFilters();
+            switchMobileView('dashboard');
+        }
+
+        function applyGlobalChannelFilter(channel) {
+            const channels = ['Shopify', 'Allegro', 'BaseLinker', 'OLX'];
+            const active = channels.includes(channel) && document.getElementById('filter-category').value === channel;
+            document.getElementById('filter-category').value = active ? '' : channel;
+            applyFilters();
+        }
+
+        function renderData() {
+            const categoryFilter = document.getElementById('filter-category').value;
+            const poFilter = document.getElementById('filter-po').value;
+            const searchFilter = document.getElementById('filter-search').value.toLowerCase();
+
+            filteredData = salesData.filter(item => {
+                if (categoryFilter && item.channel !== categoryFilter) return false;
+                if (poFilter && item.purchase_order !== poFilter) return false;
+                if (searchFilter) {
+                    const searchStr = (item.product_name + ' ' + item.sku).toLowerCase();
+                    return searchStr.includes(searchFilter);
+                }
+                return true;
             });
 
-            let rows = '';
-            products.forEach((p, idx) => {
-                const stockClass = p.current_stock < 0 ? 'stock-zero' : p.current_stock === 0 ? 'stock-zero' : p.current_stock < 5 ? 'stock-low' : 'stock-ok';
-                const stockDisplay = p.current_stock < 0 ? `${p.current_stock}` : p.current_stock;
-                const imageHtml = p.image_url
-                    ? `<img src="${p.image_url}" class="product-image" alt="${escapeHtml(p.sku)}" onerror="imgError(this)">`
-                    : '<div class="no-image">No img</div>';
-                const rowKey = p.sku || p.bl_product_id;
-                const isExpanded = expandedRowKey === rowKey;
+            filteredData.sort((a, b) => {
+                let aVal = a[sortColumn];
+                let bVal = b[sortColumn];
+                if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+                if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+                return sortDirection === 'asc' ? aVal > bVal ? 1 : -1 : aVal < bVal ? 1 : -1;
+            });
 
-                rows += `<tr class="product-row${isExpanded ? ' expanded' : ''}" onclick="toggleDetail('${escapeHtml(rowKey)}', ${idx})">
-                    <td>${imageHtml}</td>
-                    <td class="product-name" title="${escapeHtml(p.product_name)}">${escapeHtml(p.product_name)}</td>
-                    <td class="sku">${escapeHtml(p.sku || '-')}</td>
-                    <td><span class="category-badge">${escapeHtml(p.category || 'Other')}</span></td>
-                    <td class="units-sold">${p.units_sold}</td>
-                    <td class="stock ${stockClass}">${stockDisplay}</td>
-                </tr>`;
+            const content = document.getElementById('content');
+            const stats = {
+                total_variants: filteredData.length,
+                total_units: filteredData.reduce((s, p) => s + (p.units_sold || 0), 0),
+                total_orders: filteredData.reduce((s, p) => s + (p.orders || 0), 0)
+            };
 
-                if (isExpanded) {
-                    rows += buildDetailRow(p);
+            document.getElementById('total-variants').textContent = stats.total_variants.toLocaleString();
+            document.getElementById('total-units').textContent = stats.total_units.toLocaleString();
+            document.getElementById('total-orders').textContent = stats.total_orders.toLocaleString();
+
+            renderGlobalChannelBars();
+            updateFinancialPanel();
+
+            let html = '<div class="table-wrapper"><table>';
+            html += `<thead><tr>
+                <th onclick="sortBy('product_image')" style="text-align:center">${t('image')}</th>
+                <th onclick="sortBy('product_name')">${t('sku')} / ${t('sku')}</th>
+                <th onclick="sortBy('sku')"></th>
+                <th onclick="sortBy('channel')">${t('category')}</th>
+                <th onclick="sortBy('units_sold')" style="text-align:center">${t('units')}</th>
+                <th onclick="sortBy('current_stock')" style="text-align:center">${t('stock')}</th>
+            </tr></thead><tbody>`;
+
+            filteredData.forEach((p, idx) => {
+                const rowKey = p.product_id + '_' + idx;
+                const expanded = expandedRowKey === rowKey;
+                html += renderProductRow(p, rowKey, expanded, idx);
+                if (expanded) {
+                    html += renderDetailRow(p, idx);
                 }
             });
 
-            const getHeaderClass = (col) => {
-                if (sortColumn !== col) return '';
-                return sortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc';
-            };
+            html += '</tbody></table></div>';
 
-            const totalFiltered = allProducts.length;
-            const totalAll = salesData.products.length;
-            const filteredUnits = allProducts.reduce((s, p) => s + p.units_sold, 0);
-            const oos = allProducts.filter(p => p.current_stock <= 0).length;
-
-            document.getElementById('content').innerHTML = `
-                <div class="table-wrapper">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th style="width:70px">${t('colImage')}</th>
-                                <th onclick="sortBy('product_name')" class="${getHeaderClass('product_name')}">${t('colName')}</th>
-                                <th onclick="sortBy('sku')" class="${getHeaderClass('sku')}">${t('colSku')}</th>
-                                <th onclick="sortBy('category')" class="${getHeaderClass('category')}">${t('colCategory')}</th>
-                                <th onclick="sortBy('units_sold')" class="${getHeaderClass('units_sold')}">${t('colUnitsSold')}</th>
-                                <th onclick="sortBy('current_stock')" class="${getHeaderClass('current_stock')}">${t('colStock')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows}</tbody>
-                    </table>
-                    <div class="summary">
-                        ${t('showing')} <strong>${totalFiltered}</strong> ${t('of')} <strong>${totalAll}</strong> ${t('productsSuffix')} |
-                        ${t('totalUnitsSold')}: <strong>${filteredUnits.toLocaleString()}</strong> |
-                        ${t('outOfStock')}: <strong>${oos}</strong>
-                    </div>
-                </div>`;
-
-            if (expandedRowKey) {
-                const p = products.find(x => (x.sku || x.bl_product_id) === expandedRowKey);
-                if (p) createChannelChart(p);
+            if (filteredData.length === 0) {
+                html += `<div class="summary">${t('noResults')}</div>`;
+            } else {
+                const totalRevenue = filteredData.reduce((s, p) => s + (p.total_revenue || 0), 0);
+                html += `<div class="summary"><strong>${filteredData.length}</strong> products, <strong>${stats.total_units}</strong> units, <strong>${stats.total_orders}</strong> orders</div>`;
             }
+
+            content.innerHTML = html;
+
+            updateCategoryAndPOFilters();
+            updateLastUpdated();
         }
 
-        function buildDetailRow(p) {
-            const avgPrice = p.units_sold > 0 ? (p.total_revenue / p.units_sold).toFixed(2) : '0.00';
-            const channelEntries = Object.entries(p.sales_by_channel || {});
-            const channelHtml = channelEntries.length > 0
-                ? `<div class="chart-container"><canvas id="channel-chart"></canvas></div>`
-                : `<p style="color:#999;font-size:13px">${t('noChannelData')}</p>`;
+        function renderProductRow(p, rowKey, expanded, idx) {
+            const channelColors = { 'BaseLinker': '#6c757d', 'Shopify': '#28a745', 'Allegro': '#ff8c00', 'OLX': '#17a2b8' };
+            const stockClass = p.current_stock === 0 ? 'stock-zero' : p.current_stock < 10 ? 'stock-low' : 'stock-ok';
+            const image = p.product_image ? `<img src="${p.product_image}" class="product-image" alt="Product">` : '<div class="no-image">No Image</div>';
 
-            const poHtml = (p.purchase_orders && p.purchase_orders.length > 0)
-                ? `<ul class="po-list">${p.purchase_orders.map(po =>
-                    `<li><span class="po-doc">${escapeHtml(po.document_number)}</span><span>${po.quantity_ordered} ${t('qtyOrdered')} &middot; ${po.item_cost.toFixed(2)} PLN ${t('costPerUnit')}</span></li>`
-                  ).join('')}</ul>`
-                : `<p style="color:#999;font-size:13px">${t('noPOs')}</p>`;
+            return `<tr class="product-row ${expanded ? 'expanded' : ''}" onclick="toggleDetail('${rowKey}', ${idx})">
+                <td style="text-align:center">${image}</td>
+                <td><div class="product-name">${escapeHtml(p.product_name)}</div></td>
+                <td><span class="sku">${escapeHtml(p.sku)}</span></td>
+                <td><span class="category-badge" style="background:${channelColors[p.channel] || '#e0e0e0'}80;color:${channelColors[p.channel] || '#666'}">${escapeHtml(p.channel)}</span></td>
+                <td class="units-sold">${p.units_sold || 0}</td>
+                <td class="stock ${stockClass}">${p.current_stock || 0}</td>
+            </tr>`;
+        }
 
-            const displayStock = Math.max(0, p.current_stock);
-            const stockMax = Math.max(displayStock, 50);
-            const stockPct = Math.min(100, (displayStock / stockMax) * 100);
-            const stockColor = p.current_stock <= 0 ? '#dc3545' : p.current_stock < 5 ? '#fd7e14' : '#28a745';
-            const stockNote = p.current_stock < 0 ? ' <span style="color:#dc3545;font-size:11px;font-weight:600">(OVERSOLD)</span>' : '';
+        function renderDetailRow(p, idx) {
+            const stockNote = p.current_stock === 0 ? ' (OUT OF STOCK)' : p.current_stock < 10 ? ' (LOW)' : '';
+            const stockPct = p.max_stock ? Math.min(100, (p.current_stock / p.max_stock) * 100) : 0;
+            const stockColor = p.current_stock === 0 ? '#dc3545' : p.current_stock < 10 ? '#fd7e14' : '#28a745';
+
+            let poHtml = '';
+            if (window.purchaseOrders) {
+                const pos = window.purchaseOrders.filter(po => po.product_id === p.product_id);
+                if (pos.length > 0) {
+                    poHtml += '<ul class="po-list">';
+                    pos.forEach(po => poHtml += `<li><span class="po-doc">${escapeHtml(po.po_number)}</span><span>${po.quantity}</span></li>`);
+                    poHtml += '</ul>';
+                } else {
+                    poHtml += '<p style="color:#999">No POs</p>';
+                }
+            }
 
             return `<tr class="detail-row"><td colspan="6">
                 <div class="detail-panel">
                     <div class="detail-section">
-                        <h4>${t('salesStats')}</h4>
-                        <div class="detail-stat"><span class="label">${t('totalUnitsSoldDetail')}</span><span class="value">${p.units_sold}</span></div>
-                        <div class="detail-stat"><span class="label">${t('totalRevenueDetail')}</span><span class="value">${p.total_revenue.toLocaleString('pl-PL', {minimumFractionDigits: 2})} PLN</span></div>
-                        <div class="detail-stat"><span class="label">${t('avgPricePerUnit')}</span><span class="value">${parseFloat(avgPrice).toLocaleString('pl-PL', {minimumFractionDigits: 2})} PLN</span></div>
-                    </div>
-                    <div class="detail-section">
-                        <h4>${t('salesChannels')}</h4>
-                        ${channelHtml}
-                    </div>
-                    <div class="detail-section">
-                        <h4>${t('purchaseOrderHistory')}</h4>
+                        <h4>${t('baselinkerSales')}</h4>
+                        <div class="detail-stat"><span class="label">Revenue</span><span class="value">PLN ${(p.total_revenue || 0).toFixed(2)}</span></div>
+                        <div class="detail-stat"><span class="label">Profit</span><span class="value" style="color:${(p.total_profit || 0) >= 0 ? '#28a745' : '#dc3545'}">PLN ${(p.total_profit || 0).toFixed(2)}</span></div>
+                        <div class="detail-stat"><span class="label">Units</span><span class="value">${p.units_sold || 0}</span></div>
+                        <h4 style="margin-top:16px">${t('purchaseOrders')}</h4>
                         ${poHtml}
+                    </div>
+                    <div class="detail-section">
+                        <h4>${t('salesByChannel')}</h4>
+                        <div class="chart-container"><canvas id="channel-chart"></canvas></div>
+                        ${stockNote}
                     </div>
                     <div class="detail-section">
                         <h4>${t('stockLevel')}</h4>
@@ -1254,6 +1728,7 @@
                 sortColumn = column;
                 sortDirection = (column === 'product_name' || column === 'sku' || column === 'category') ? 'asc' : 'desc';
             }
+            trackAction('sort', { column, direction: sortDirection });
             renderData();
         }
 
@@ -1270,24 +1745,22 @@
             if (btn) btn.disabled = true;
             if (status) { status.textContent = 'Refreshing...'; status.style.color = '#4472C4'; }
 
-            // Animate the nav refresh button on mobile
             const navRefresh = document.getElementById('nav-refresh');
             const navRefreshSvg = navRefresh ? navRefresh.querySelector('svg') : null;
             if (navRefreshSvg) navRefreshSvg.style.animation = 'spin 1s linear infinite';
 
             try {
-                const resp = await fetch('/api/refresh', { method: 'POST' });
+                const resp = await authFetch('/api/refresh', { method: 'POST' });
                 const result = await resp.json();
-                // Poll until refresh completes (backend runs in background)
                 let attempts = 0;
                 const poll = async () => {
                     attempts++;
-                    if (attempts > 30) { // max 30s
+                    if (attempts > 30) {
                         if (navRefreshSvg) navRefreshSvg.style.animation = '';
                         if (btn) btn.disabled = false;
                         return;
                     }
-                    const check = await fetch('/api/sales');
+                    const check = await authFetch('/api/sales');
                     const data = await check.json();
                     if (data.is_refreshing) {
                         setTimeout(poll, 1000);
@@ -1298,7 +1771,6 @@
                         if (btn) btn.disabled = false;
                     }
                 };
-                // Give backend a moment to start, then poll
                 setTimeout(poll, 2000);
             } catch (error) {
                 if (status) { status.textContent = 'Error refreshing'; status.style.color = '#dc3545'; }
@@ -1307,7 +1779,7 @@
             }
         }
 
-        function downloadExcel() {
+        async function downloadExcel() {
             const params = new URLSearchParams();
             const cat = document.getElementById('filter-category').value;
             const po = document.getElementById('filter-po').value;
@@ -1318,14 +1790,164 @@
             if (activeDateFrom) params.set('date_from', activeDateFrom);
             if (activeDateTo) params.set('date_to', activeDateTo);
             const qs = params.toString();
-            window.location.href = '/api/download' + (qs ? '?' + qs : '');
+            try {
+                const resp = await authFetch('/api/download' + (qs ? '?' + qs : ''));
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `sales_${new Date().toISOString().slice(0,10)}.xlsx`;
+                a.click();
+                URL.revokeObjectURL(url);
+                trackAction('export', { filters: { category: cat, po, search, date_from: activeDateFrom, date_to: activeDateTo } });
+            } catch (e) {
+                console.error('Download error:', e);
+            }
+        }
+
+        function renderGlobalChannelBars() {
+            const channels = {};
+            filteredData.forEach(p => {
+                channels[p.channel] = (channels[p.channel] || 0) + (p.units_sold || 0);
+            });
+
+            const container = document.getElementById('channel-bars-container');
+            if (!container) return;
+
+            const entries = Object.entries(channels).sort((a, b) => b[1] - a[1]);
+            const maxVal = Math.max(...entries.map(e => e[1]), 1);
+
+            let html = '';
+            entries.forEach(([channel, units]) => {
+                const pct = (units / maxVal) * 100;
+                const color = { 'Shopify': '#28a745', 'Allegro': '#ff8c00', 'BaseLinker': '#6c757d', 'OLX': '#17a2b8' }[channel] || '#999';
+
+                html += `
+                    <div class="channel-bar-item" onclick="applyGlobalChannelFilter('${channel}')">
+                        <span class="bar-label">${escapeHtml(channel)}</span>
+                        <div class="bar-track">
+                            <div class="bar-fill" style="width:${pct}%;background:${color}"></div>
+                        </div>
+                        <span class="bar-value">${units}</span>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html || '<span style="opacity:0.6;font-size:12px">No data</span>';
+        }
+
+        function updateFinancialPanel() {
+            const revenue = filteredData.reduce((s, p) => s + (p.total_revenue || 0), 0);
+            const vat = revenue * 0.23;
+            const netRevenue = revenue - vat;
+            const profit = filteredData.reduce((s, p) => s + (p.total_profit || 0), 0);
+            const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+
+            document.getElementById('fin-revenue').textContent = 'PLN ' + revenue.toFixed(2);
+            document.getElementById('fin-net-revenue').textContent = 'PLN ' + netRevenue.toFixed(2);
+            document.getElementById('fin-profit').textContent = 'PLN ' + profit.toFixed(2);
+            document.getElementById('fin-margin').textContent = margin.toFixed(1) + '%';
+
+            const profitRow = document.getElementById('fin-profit-row');
+            if (profitRow) {
+                profitRow.classList.toggle('negative', profit < 0);
+            }
+        }
+
+        function updateCategoryAndPOFilters() {
+            const categories = [...new Set(salesData.map(p => p.channel))].sort();
+            const pos = [...new Set(salesData.map(p => p.purchase_order).filter(p => p))].sort();
+
+            ['filter-category', 'mobile-filter-category'].forEach(id => {
+                const select = document.getElementById(id);
+                if (select) {
+                    const current = select.value;
+                    select.innerHTML = '<option value="">All</option>';
+                    categories.forEach(cat => {
+                        const opt = document.createElement('option');
+                        opt.value = cat;
+                        opt.textContent = cat;
+                        select.appendChild(opt);
+                    });
+                    select.value = current;
+                }
+            });
+
+            ['filter-po', 'mobile-filter-po'].forEach(id => {
+                const select = document.getElementById(id);
+                if (select) {
+                    const current = select.value;
+                    select.innerHTML = '<option value="">All</option>';
+                    pos.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p;
+                        opt.textContent = p;
+                        select.appendChild(opt);
+                    });
+                    select.value = current;
+                }
+            });
+        }
+
+        function updateLastUpdated() {
+            const now = new Date();
+            document.getElementById('last-updated').textContent = now.toLocaleString();
+        }
+
+        function switchMobileView(view) {
+            currentMobileView = view;
+            document.querySelectorAll('.floating-nav button').forEach(btn => btn.classList.remove('active'));
+            const navBtn = document.getElementById('nav-' + view);
+            if (navBtn) navBtn.classList.add('active');
+
+            document.getElementById('main-container').style.display = (view === 'dashboard') ? '' : 'none';
+            document.getElementById('mobile-time-view').style.display = (view === 'time') ? 'block' : 'none';
+            document.getElementById('mobile-filter-view').style.display = (view === 'filter') ? 'block' : 'none';
+            const adminPanel = document.getElementById('admin-panel');
+            if (adminPanel) {
+                adminPanel.classList.toggle('visible', view === 'admin');
+                if (view === 'admin') loadAdminTab(currentAdminTab);
+            }
+
+            window.scrollTo(0, 0);
         }
 
         // ========== INIT ==========
-        applyLanguage();
-        updateTimeBarUI();
-        fetchSalesData();
-        setInterval(fetchSalesData, 300000);
+        function initApp() {
+            applyLanguage();
+            updateTimeBarUI();
+
+            if (authToken && currentUser) {
+                authFetch('/api/auth/me').then(resp => {
+                    if (resp.ok) {
+                        resp.json().then(data => {
+                            currentUser = data.user;
+                            localStorage.setItem('bl_auth_user', JSON.stringify(currentUser));
+                            if (currentUser.must_change_password) {
+                                showScreen('set-password-screen');
+                            } else {
+                                showMainApp();
+                                fetchSalesData();
+                            }
+                        });
+                    } else {
+                        clearAuth();
+                        showLoginScreen();
+                    }
+                }).catch(() => {
+                    clearAuth();
+                    showLoginScreen();
+                });
+            } else {
+                showLoginScreen();
+            }
+
+            setInterval(() => {
+                if (authToken) fetchSalesData();
+            }, 300000);
+        }
+
+        initApp();
     </script>
 </body>
 </html>
