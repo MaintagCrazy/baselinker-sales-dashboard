@@ -732,19 +732,13 @@ def find_po_items_for_sku(sku, po_items_by_sku):
     if sku_upper in po_items_by_sku:
         _add_items(po_items_by_sku[sku_upper])
 
-    # 2. Progressive base SKU matching (S-91-451 → S-91 → S)
+    # 2. Progressive base SKU matching (S-91-451 → S-91, but NOT → S)
+    # Minimum 2 segments to avoid matching unrelated models (S-71, S-83 etc.)
     parts = sku_upper.split('-')
-    for i in range(len(parts) - 1, 0, -1):
+    for i in range(len(parts) - 1, 1, -1):  # stop at 2 segments minimum
         candidate = '-'.join(parts[:i])
         if candidate in po_items_by_sku:
             _add_items(po_items_by_sku[candidate])
-
-    # 3. Prefix match — find keys that share a base with this SKU
-    for i in range(len(parts) - 1, 0, -1):
-        candidate = '-'.join(parts[:i])
-        for key, items in po_items_by_sku.items():
-            if key.startswith(candidate + '-') and key != sku_upper:
-                _add_items(items)
 
     return result
 
