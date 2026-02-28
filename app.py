@@ -393,11 +393,13 @@ class TempPasswordRequest(BaseModel):
     temp_password: str
     new_password: str
 
+VALID_ROLES = {"admin", "full_access", "stock_only"}
+
 class CreateUserRequest(BaseModel):
     email: str
     display_name: str = ""
     pin: str = ""
-    role: str = "user"
+    role: str = "stock_only"
 
 class UpdateUserRequest(BaseModel):
     display_name: str = None
@@ -1446,6 +1448,8 @@ async def admin_list_users(user: dict = Depends(require_admin)):
 
 @app.post("/api/admin/users")
 async def admin_create_user(req: CreateUserRequest, user: dict = Depends(require_admin)):
+    if req.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(VALID_ROLES)}")
     conn = get_db_connection()
     if not conn:
         raise HTTPException(status_code=500, detail="Database unavailable")
@@ -1480,6 +1484,8 @@ async def admin_update_user(user_id: int, req: UpdateUserRequest, user: dict = D
             updates.append("pin_hash = %s")
             params.append(bcrypt.hashpw(req.pin.encode(), bcrypt.gensalt()).decode())
         if req.role is not None:
+            if req.role not in VALID_ROLES:
+                raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(VALID_ROLES)}")
             updates.append("role = %s")
             params.append(req.role)
         if req.is_banned is not None:
@@ -1673,23 +1679,44 @@ async def track_action(req: TrackRequest, user: dict = Depends(get_current_user)
 
 # ========== PROTECTED DATA ROUTES ==========
 
+def strip_sales_data_for_stock_only(data: dict) -> dict:
+    """Remove sensitive sales/financial data for stock_only users. They only see products + stock."""
+    import copy
+    stripped = copy.deepcopy(data)
+    stripped.pop("total_units_sold", None)
+    stripped.pop("total_orders", None)
+    stripped.pop("total_revenue", None)
+    stripped.pop("net_revenue", None)
+    stripped.pop("profit", None)
+    stripped.pop("profit_margin", None)
+    stripped.pop("channel_breakdown", None)
+    for p in stripped.get("products", []):
+        p.pop("units_sold", None)
+        p.pop("total_revenue", None)
+        p.pop("sales_by_channel", None)
+        p.pop("purchase_orders", None)
+    return stripped
+
 @app.get("/api/sales")
 async def get_sales(
     date_from: str = Query("", description="Start date YYYY-MM-DD"),
     date_to: str = Query("", description="End date YYYY-MM-DD"),
     user: dict = Depends(get_current_user)
 ):
+    is_stock_only = user.get("role") in ("stock_only", "viewer")
+
     if cache["data"] is None:
         return JSONResponse(status_code=503, content={"error": "Data not loaded yet. Please wait..."})
 
     # No date params -> return cached "all time" data (fast path, no regression)
     if not date_from and not date_to:
-        return {
+        result = {
             "last_updated": cache["last_updated"],
             "next_refresh": cache["next_refresh"],
             "is_refreshing": cache["is_refreshing"],
             **cache["data"]
         }
+        return strip_sales_data_for_stock_only(result) if is_stock_only else result
 
     # With date params -> use ALL-status orders (not just Wysłane)
     # so "Yesterday" shows all 12 orders, not just 2 shipped ones
@@ -1727,7 +1754,7 @@ async def get_sales(
 
     response_data = build_response(filtered_orders, inventory, po_items_map, order_sources)
 
-    return {
+    result = {
         "last_updated": cache["last_updated"],
         "next_refresh": cache["next_refresh"],
         "is_refreshing": cache["is_refreshing"],
@@ -1735,6 +1762,7 @@ async def get_sales(
         "date_to": date_to,
         **response_data
     }
+    return strip_sales_data_for_stock_only(result) if is_stock_only else result
 
 
 @app.get("/api/purchase-orders")

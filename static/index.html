@@ -378,6 +378,26 @@
         .header-btn { background: rgba(255,255,255,0.15); border: none; color: white; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; white-space: nowrap; }
         .header-btn:hover { background: rgba(255,255,255,0.25); }
         .online-dot { display: inline-block; width: 8px; height: 8px; background: #28a745; border-radius: 50%; margin-right: 4px; }
+
+        /* ========== ROLE-BASED VISIBILITY ========== */
+        body.role-stock-only .financial-panel,
+        body.role-stock-only .channel-bar-card,
+        body.role-stock-only .stats-column .stat-card:nth-child(2),
+        body.role-stock-only .stats-column .stat-card:nth-child(3),
+        body.role-stock-only th:nth-child(5),
+        body.role-stock-only td:nth-child(5),
+        body.role-stock-only .detail-section:nth-child(1),
+        body.role-stock-only .detail-section:nth-child(2),
+        body.role-stock-only .detail-section:nth-child(3),
+        body.role-stock-only .summary,
+        body.role-stock-only .btn-secondary { display: none !important; }
+        body.role-stock-only .header-stats { grid-template-columns: auto; }
+
+        .role-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .role-badge.role-admin { background: #fff3cd; color: #856404; }
+        .role-badge.role-full-access { background: #d4edda; color: #155724; }
+        .role-badge.role-stock-only { background: #e2e3e5; color: #383d41; }
+        .role-hint { font-size: 11px; color: #888; margin-top: 6px; padding: 8px; background: #f8f9fa; border-radius: 6px; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -433,11 +453,12 @@
             <label>PIN (4-6 digits)</label>
             <input type="text" id="admin-user-pin" placeholder="PIN" maxlength="6" inputmode="numeric">
             <label>Role</label>
-            <select id="admin-user-role">
-                <option value="viewer">Viewer</option>
-                <option value="editor">Editor</option>
+            <select id="admin-user-role" onchange="updateRoleHint()">
+                <option value="stock_only">Stock Only</option>
+                <option value="full_access">Full Access</option>
                 <option value="admin">Admin</option>
             </select>
+            <div class="role-hint" id="role-hint">Can see: Product names, SKUs, images, stock levels. Cannot see: sales numbers, revenue, orders, financials.</div>
             <div class="admin-modal-actions">
                 <button class="admin-btn" onclick="closeAdminModal()">Cancel</button>
                 <button class="admin-btn admin-btn-primary" onclick="saveAdminUser()">Save</button>
@@ -725,6 +746,7 @@
                     if (navAdmin) navAdmin.style.display = '';
                 }
             }
+            applyRolePermissions();
         }
 
         function showAuthView(view) {
@@ -906,6 +928,54 @@
             if (confirmPw) confirmPw.addEventListener('keyup', (e) => { if (e.key === 'Enter') setNewPassword(); });
         });
 
+        // ========== ROLE DEFINITIONS ==========
+        function getRoleInfo(role) {
+            const roles = {
+                admin: {
+                    label: 'Admin',
+                    permissions: 'Everything + manage users, sessions, activity logs',
+                    hint: 'Full access to all data. Can create/edit/ban users, view sessions, search history, and activity logs.'
+                },
+                full_access: {
+                    label: 'Full Access',
+                    permissions: 'Sales, revenue, orders, financials, stock, export',
+                    hint: 'Can see all sales data, revenue, profit, financials, stock levels, and export reports. Cannot manage users.'
+                },
+                stock_only: {
+                    label: 'Stock Only',
+                    permissions: 'Product names, SKUs, images, stock levels',
+                    hint: 'Can see: Product names, SKUs, images, stock levels. Cannot see: sales numbers, revenue, orders, financials.'
+                },
+                // Backward compat for old roles
+                viewer: {
+                    label: 'Stock Only',
+                    permissions: 'Product names, SKUs, images, stock levels',
+                    hint: 'Can see: Product names, SKUs, images, stock levels. Cannot see: sales numbers, revenue, orders, financials.'
+                },
+                editor: {
+                    label: 'Full Access',
+                    permissions: 'Sales, revenue, orders, financials, stock, export',
+                    hint: 'Can see all sales data, revenue, profit, financials, stock levels, and export reports. Cannot manage users.'
+                }
+            };
+            return roles[role] || roles.stock_only;
+        }
+
+        function updateRoleHint() {
+            const role = document.getElementById('admin-user-role').value;
+            const hint = document.getElementById('role-hint');
+            if (hint) hint.textContent = getRoleInfo(role).hint;
+        }
+
+        function applyRolePermissions() {
+            document.body.classList.remove('role-stock-only', 'role-full-access', 'role-admin');
+            if (!currentUser) return;
+            const effectiveRole = currentUser.role === 'viewer' ? 'stock_only'
+                : currentUser.role === 'editor' ? 'full_access'
+                : currentUser.role;
+            document.body.classList.add('role-' + effectiveRole);
+        }
+
         // ========== ADMIN PANEL ==========
         let currentAdminTab = 'users';
 
@@ -971,13 +1041,15 @@
             const resp = await authFetch('/api/admin/users');
             const data = await resp.json();
             let html = '<div style="margin-bottom:12px"><button class="admin-btn admin-btn-primary" onclick="openCreateUserModal()">Create User</button></div>';
-            html += '<table class="admin-table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
+            html += '<table class="admin-table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Can See</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
             (data.users || []).forEach(u => {
                 const status = u.is_banned ? '<span style="color:#dc3545">Banned</span>' : '<span style="color:#28a745">Active</span>';
+                const roleInfo = getRoleInfo(u.role);
                 html += `<tr>
                     <td>${u.email}</td>
                     <td>${u.display_name || '-'}</td>
-                    <td>${u.role}</td>
+                    <td><span class="role-badge role-${u.role}">${roleInfo.label}</span></td>
+                    <td style="font-size:11px;color:#666;max-width:220px">${roleInfo.permissions}</td>
                     <td>${status}</td>
                     <td>${new Date(u.created_at).toLocaleDateString()}</td>
                     <td>
@@ -1072,7 +1144,8 @@
             document.getElementById('admin-user-email').value = '';
             document.getElementById('admin-user-name').value = '';
             document.getElementById('admin-user-pin').value = '';
-            document.getElementById('admin-user-role').value = 'viewer';
+            document.getElementById('admin-user-role').value = 'stock_only';
+            updateRoleHint();
             document.getElementById('admin-modal').style.display = 'flex';
         }
 
@@ -1087,6 +1160,7 @@
             document.getElementById('admin-user-name').value = user.display_name || '';
             document.getElementById('admin-user-pin').value = '';
             document.getElementById('admin-user-role').value = user.role;
+            updateRoleHint();
             document.getElementById('admin-modal').style.display = 'flex';
         }
 
