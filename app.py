@@ -902,10 +902,18 @@ def refresh_data():
 
         # Load costs AND purchase orders from Google Sheets import tabs
         # Each tab = one invoice. Tab name = invoice name.
-        print("Loading costs and purchase orders from import sheets...")
-        costs_by_sku, costs_by_base_sku, po_list, po_items_by_sku = load_costs_and_pos_from_import_sheet()
-        cache["costs"] = (costs_by_sku, costs_by_base_sku)
-        cache["po_items_by_sku"] = po_items_by_sku
+        # Wrapped separately so a Google Sheets error doesn't block order fetching
+        po_list = []
+        po_items_by_sku = {}
+        try:
+            print("Loading costs and purchase orders from import sheets...")
+            costs_by_sku, costs_by_base_sku, po_list, po_items_by_sku = load_costs_and_pos_from_import_sheet()
+            cache["costs"] = (costs_by_sku, costs_by_base_sku)
+            cache["po_items_by_sku"] = po_items_by_sku
+        except Exception as e:
+            print(f"WARNING: Cost/PO loading failed (orders will still load): {e}")
+            import traceback
+            traceback.print_exc()
 
         # Fetch orders and aggregate sales
         orders = fetch_all_wyslane_orders()
