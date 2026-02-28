@@ -711,32 +711,42 @@ def get_inventory(product_ids: list) -> dict:
 
 def find_po_items_for_sku(sku, po_items_by_sku):
     """Find purchase order items for a SKU using progressive matching.
-    Same strategy as find_cost_for_sku — exact, then base, then prefix.
+    Aggregates ALL matching PO items across tiers (exact + base + prefix),
+    deduplicating by document_number so a product shows ALL invoices it appears in.
     """
     if not sku or not po_items_by_sku:
         return []
 
     sku_upper = sku.strip().upper()
+    seen_docs = set()
+    result = []
+
+    def _add_items(items):
+        for item in items:
+            doc = item.get('document_number', '')
+            if doc not in seen_docs:
+                seen_docs.add(doc)
+                result.append(item)
 
     # 1. Exact match
     if sku_upper in po_items_by_sku:
-        return po_items_by_sku[sku_upper]
+        _add_items(po_items_by_sku[sku_upper])
 
-    # 2. Progressive base SKU matching
+    # 2. Progressive base SKU matching (S-91-451 → S-91 → S)
     parts = sku_upper.split('-')
     for i in range(len(parts) - 1, 0, -1):
         candidate = '-'.join(parts[:i])
         if candidate in po_items_by_sku:
-            return po_items_by_sku[candidate]
+            _add_items(po_items_by_sku[candidate])
 
-    # 3. Prefix match
+    # 3. Prefix match — find keys that share a base with this SKU
     for i in range(len(parts) - 1, 0, -1):
         candidate = '-'.join(parts[:i])
         for key, items in po_items_by_sku.items():
-            if key.startswith(candidate + '-'):
-                return items
+            if key.startswith(candidate + '-') and key != sku_upper:
+                _add_items(items)
 
-    return []
+    return result
 
 
 def _sku_matches_set(sku, sku_set, base_skus):
