@@ -1744,10 +1744,21 @@
             let products = salesData.products;
 
             // Channel filter (from clicking channel bars)
+            // When filtering by channel, adjust units_sold and total_revenue to that channel only
             if (activeChannelFilter) {
                 products = products.filter(p =>
                     p.sales_by_channel && Object.keys(p.sales_by_channel).includes(activeChannelFilter)
-                );
+                ).map(p => {
+                    const channelUnits = p.sales_by_channel[activeChannelFilter] || 0;
+                    const ratio = p.units_sold > 0 ? channelUnits / p.units_sold : 0;
+                    return {
+                        ...p,
+                        _original_units: p.units_sold,
+                        _original_revenue: p.total_revenue,
+                        units_sold: channelUnits,
+                        total_revenue: Math.round(p.total_revenue * ratio * 100) / 100,
+                    };
+                });
             }
 
             const catFilter = document.getElementById('filter-category').value;
@@ -1868,6 +1879,44 @@
             if (expandedRowKey) {
                 const p = products.find(x => (x.sku || x.bl_product_id) === expandedRowKey);
                 if (p) createChannelChart(p);
+            }
+
+            // Update header stats + financials to reflect filtered view
+            updateFilteredStats(allProducts);
+        }
+
+        function updateFilteredStats(filteredProducts) {
+            const fmtPLN = (v) => v.toLocaleString('pl-PL', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+            if (activeChannelFilter || document.getElementById('filter-category').value || document.getElementById('filter-po').value || document.getElementById('filter-search').value.trim()) {
+                // Show filtered stats
+                const filteredUnits = filteredProducts.reduce((s, p) => s + p.units_sold, 0);
+                const filteredRevenue = filteredProducts.reduce((s, p) => s + (p.total_revenue || 0), 0);
+                const filteredNetRevenue = filteredRevenue / 1.23;
+                const filteredCost = filteredProducts.reduce((s, p) => s + ((p.unit_cost || 0) * p.units_sold), 0);
+                const filteredProfit = filteredNetRevenue - filteredCost;
+                const filteredMargin = filteredNetRevenue > 0 ? Math.round((filteredProfit / filteredNetRevenue) * 1000) / 10 : 0;
+
+                document.getElementById('total-variants').textContent = filteredProducts.length;
+                document.getElementById('total-units').textContent = filteredUnits.toLocaleString();
+
+                const revEl = document.getElementById('fin-revenue');
+                const netEl = document.getElementById('fin-net-revenue');
+                const profitEl = document.getElementById('fin-profit');
+                const marginEl = document.getElementById('fin-margin');
+                const profitRow = document.getElementById('fin-profit-row');
+                if (revEl) revEl.textContent = fmtPLN(filteredRevenue) + ' PLN';
+                if (netEl) netEl.textContent = fmtPLN(filteredNetRevenue) + ' PLN';
+                if (profitEl) profitEl.textContent = fmtPLN(filteredProfit) + ' PLN';
+                if (marginEl) marginEl.textContent = filteredMargin + '%';
+                if (profitRow) profitRow.classList.toggle('negative', filteredProfit < 0);
+            } else {
+                // No filter active — restore global stats
+                if (salesData) {
+                    document.getElementById('total-variants').textContent = salesData.total_variants;
+                    document.getElementById('total-units').textContent = salesData.total_units_sold.toLocaleString();
+                    updateFinancials();
+                }
             }
         }
 
