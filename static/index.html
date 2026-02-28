@@ -708,17 +708,17 @@
         function hideAuthScreen() {
             document.getElementById('auth-screen').style.display = 'none';
             document.querySelector('.header').style.display = '';
-            document.querySelector('.controls').style.display = '';
-            document.getElementById('time-bar').style.display = '';
-            document.getElementById('filter-bar').style.display = '';
-            document.getElementById('main-container').style.display = '';
+            document.querySelector('.controls').style.display = 'flex';
+            document.getElementById('time-bar').style.display = 'flex';
+            document.getElementById('filter-bar').style.display = 'flex';
+            document.getElementById('main-container').style.display = 'block';
             // User badge + buttons
             const badge = document.getElementById('user-badge');
             const adminBtn = document.getElementById('admin-panel-btn');
             const logoutBtn = document.getElementById('logout-btn');
             const navAdmin = document.getElementById('nav-admin');
             if (currentUser) {
-                if (badge) { badge.textContent = currentUser.display_name || currentUser.email; badge.style.display = ''; }
+                if (badge) { badge.textContent = currentUser.email; badge.style.display = ''; }
                 if (logoutBtn) logoutBtn.style.display = '';
                 if (currentUser.role === 'admin') {
                     if (adminBtn) adminBtn.style.display = '';
@@ -911,12 +911,17 @@
 
         function showAdminPanel() {
             if (!currentUser || currentUser.role !== 'admin') return;
+            // If admin panel is already visible, toggle back to dashboard
+            if (document.getElementById('admin-panel').style.display === 'block') {
+                hideAdminPanel();
+                return;
+            }
             document.querySelector('.header').style.display = '';
             document.querySelector('.controls').style.display = 'none';
             document.getElementById('time-bar').style.display = 'none';
             document.getElementById('filter-bar').style.display = 'none';
             document.getElementById('main-container').style.display = 'none';
-            document.getElementById('admin-panel').style.display = '';
+            document.getElementById('admin-panel').style.display = 'block';
             // Hide mobile views
             document.getElementById('mobile-time-view').style.display = 'none';
             document.getElementById('mobile-filter-view').style.display = 'none';
@@ -925,10 +930,10 @@
 
         function hideAdminPanel() {
             document.getElementById('admin-panel').style.display = 'none';
-            document.querySelector('.controls').style.display = '';
-            document.getElementById('time-bar').style.display = '';
-            document.getElementById('filter-bar').style.display = '';
-            document.getElementById('main-container').style.display = '';
+            document.querySelector('.controls').style.display = 'flex';
+            document.getElementById('time-bar').style.display = 'flex';
+            document.getElementById('filter-bar').style.display = 'flex';
+            document.getElementById('main-container').style.display = 'block';
         }
 
         function switchAdminTab(tab) {
