@@ -201,6 +201,24 @@ def init_database():
                 success BOOLEAN DEFAULT FALSE
             )
         """)
+        # Permanent order storage — survives BaseLinker's 3-month auto-archive
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bl_orders (
+                order_id BIGINT PRIMARY KEY,
+                date_add BIGINT,
+                date_confirmed BIGINT,
+                status_id INTEGER,
+                order_source VARCHAR(50),
+                order_source_id INTEGER,
+                currency VARCHAR(10),
+                delivery_price NUMERIC(12,2),
+                order_data JSONB NOT NULL,
+                first_seen_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_bl_orders_date_add ON bl_orders(date_add)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_bl_orders_status ON bl_orders(status_id)")
         conn.commit()
 
         # Seed admin user
@@ -216,6 +234,91 @@ def init_database():
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error: {e}")
+
+
+def save_orders_to_db(orders: list):
+    """Save/update orders in the database so they survive BaseLinker's 3-month archive."""
+    conn = get_db_connection()
+    if not conn or not orders:
+        return 0
+    try:
+        cur = conn.cursor()
+        saved = 0
+        for order in orders:
+            oid = order.get('order_id')
+            if not oid:
+                continue
+            cur.execute("""
+                INSERT INTO bl_orders (order_id, date_add, date_confirmed, status_id,
+                    order_source, order_source_id, currency, delivery_price, order_data)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (order_id) DO UPDATE SET
+                    status_id = EXCLUDED.status_id,
+                    order_data = EXCLUDED.order_data,
+                    updated_at = NOW()
+            """, (
+                oid,
+                order.get('date_add', 0),
+                order.get('date_confirmed', 0),
+                order.get('status_id'),
+                order.get('order_source', ''),
+                order.get('order_source_id', 0),
+                (order.get('currency', '') or 'PLN').upper(),
+                float(order.get('delivery_price', 0) or 0),
+                json.dumps(order)
+            ))
+            saved += 1
+        conn.commit()
+        cur.close()
+        print(f"Saved {saved} orders to database")
+        return saved
+    except Exception as e:
+        print(f"Error saving orders to DB: {e}")
+        try:
+            conn.rollback()
+        except:
+            pass
+        return 0
+
+
+def load_orders_from_db(min_date_add: int = 0) -> list:
+    """Load ALL stored orders from the database (including ones BaseLinker has archived).
+    Returns list of order dicts (same format as BaseLinker API response).
+    """
+    conn = get_db_connection()
+    if not conn:
+        return []
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT order_data FROM bl_orders WHERE date_add >= %s ORDER BY date_add DESC", (min_date_add,))
+        rows = cur.fetchall()
+        cur.close()
+        orders = []
+        for row in rows:
+            data = row[0]
+            if isinstance(data, str):
+                data = json.loads(data)
+            orders.append(data)
+        print(f"Loaded {len(orders)} orders from database")
+        return orders
+    except Exception as e:
+        print(f"Error loading orders from DB: {e}")
+        return []
+
+
+def get_db_order_count() -> int:
+    """Get count of orders stored in database."""
+    conn = get_db_connection()
+    if not conn:
+        return 0
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM bl_orders")
+        count = cur.fetchone()[0]
+        cur.close()
+        return count
+    except:
+        return 0
 
 
 def log_activity(action: str, data: dict = None):
@@ -1100,15 +1203,38 @@ def refresh_data():
         # Fetch orders and aggregate sales
         orders = fetch_all_wyslane_orders()
 
-        # Cache raw orders (Wysłane only) for "All Time" view
-        cache["raw_orders"] = orders
-
         # Also fetch recent orders from ALL statuses for date-filtered views
         # (Today/Yesterday/etc. should show all orders, not just shipped ones)
         all_recent = fetch_recent_orders_all_statuses(days=90)
+
+        # Save ALL fetched orders to the database (survives BaseLinker's 3-month archive)
+        all_fetched = {o['order_id']: o for o in orders}
+        for o in all_recent:
+            all_fetched[o['order_id']] = o  # all_recent may have fresher status
+        save_orders_to_db(list(all_fetched.values()))
+
+        # For "All Time" view: merge fresh API orders with historical DB orders
+        # DB has orders that BaseLinker may have archived (older than 3 months)
+        db_orders = load_orders_from_db()
+        merged_wysłane = {}
+        # Start with DB orders (includes historical)
+        for o in db_orders:
+            if o.get('status_id') == WYSLANE_STATUS_ID:
+                merged_wysłane[o['order_id']] = o
+        # Override with fresh API data (more up-to-date)
+        for o in orders:
+            merged_wysłane[o['order_id']] = o
+        orders_merged = list(merged_wysłane.values())
+
+        db_order_count = get_db_order_count()
+        api_order_count = len(orders)
+        print(f"Orders: {api_order_count} from API, {db_order_count} in DB, {len(orders_merged)} merged for All Time view")
+
+        # Cache raw orders — merged includes DB historical
+        cache["raw_orders"] = orders_merged
         cache["all_recent_orders"] = all_recent
 
-        sales_data = aggregate_sales(orders, order_sources)
+        sales_data = aggregate_sales(orders_merged, order_sources)
         product_ids = set(d['bl_product_id'] for d in sales_data.values() if d['bl_product_id'])
 
         # Also include product IDs from recent all-status orders
@@ -1127,8 +1253,8 @@ def refresh_data():
         # PO items map for build_response (keyed by BaseLinker Variant ID)
         po_items_map = po_items_by_bl_id
 
-        # Build full response using helper
-        response_data = build_response(orders, inventory, po_items_map, order_sources)
+        # Build full response using merged orders (API + DB historical)
+        response_data = build_response(orders_merged, inventory, po_items_map, order_sources)
 
         now = datetime.now(timezone.utc)
         cache["data"] = response_data
@@ -1189,7 +1315,8 @@ async def health_check():
         "status": "healthy",
         "last_updated": cache["last_updated"],
         "data_loaded": cache["data"] is not None,
-        "database_connected": get_db_connection() is not None
+        "database_connected": get_db_connection() is not None,
+        "orders_in_db": get_db_order_count()
     }
 
 
@@ -1881,6 +2008,43 @@ async def debug_orders(user: dict = Depends(require_admin)):
         "source_names": cache.get("order_sources", {}),
         "recent_orders": debug_list
     }
+
+
+@app.get("/api/debug/orders-db")
+async def debug_orders_db(user: dict = Depends(require_admin)):
+    """Debug: show order database stats — how many orders stored vs API"""
+    conn = get_db_connection()
+    if not conn:
+        return {"error": "Database not connected"}
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM bl_orders")
+        total = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM bl_orders WHERE status_id = %s", (WYSLANE_STATUS_ID,))
+        shipped = cur.fetchone()[0]
+        cur.execute("SELECT MIN(date_add), MAX(date_add) FROM bl_orders")
+        row = cur.fetchone()
+        min_date = datetime.fromtimestamp(row[0], tz=POLISH_TZ).strftime("%Y-%m-%d") if row[0] else None
+        max_date = datetime.fromtimestamp(row[1], tz=POLISH_TZ).strftime("%Y-%m-%d") if row[1] else None
+        cur.execute("""
+            SELECT order_source, COUNT(*) as cnt
+            FROM bl_orders GROUP BY order_source ORDER BY cnt DESC LIMIT 10
+        """)
+        sources = [{"source": r[0], "count": r[1]} for r in cur.fetchall()]
+        cur.close()
+
+        api_wysłane = len(cache.get("raw_orders", []) or [])
+        return {
+            "db_total_orders": total,
+            "db_shipped_orders": shipped,
+            "db_oldest_order": min_date,
+            "db_newest_order": max_date,
+            "db_sources": sources,
+            "api_wysłane_cached": api_wysłane,
+            "extra_from_db": max(0, len(cache.get("raw_orders", []) or []) - len(cache.get("all_recent_orders", []) or [])),
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.get("/api/download")
