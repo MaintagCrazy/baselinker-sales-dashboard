@@ -36,7 +36,9 @@ from pydantic import BaseModel
 BASELINKER_API_KEY = os.getenv("BASELINKER_API_KEY", "")
 BASELINKER_INVENTORY_ID = int(os.getenv("BASELINKER_INVENTORY_ID", "58952"))
 BASELINKER_API_URL = "https://api.baselinker.com/connector.php"
-WYSLANE_STATUS_ID = 273568  # Wyslane (Shipped)
+WYSLANE_STATUS_ID = 273568   # Wysłane (Shipped)
+SPAKOWANE_STATUS_ID = 273928  # Spakowane (Packed)
+FINANCIAL_STATUS_IDS = {WYSLANE_STATUS_ID, SPAKOWANE_STATUS_ID}  # Statuses that count toward financials
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # Google Sheets cost loading
@@ -780,14 +782,14 @@ def find_cost_for_sku(sku, costs_by_sku, costs_by_base_sku):
 
 # ========== ORDER FETCHING ==========
 
-def fetch_all_wyslane_orders() -> list:
-    """Fetch ALL orders with 'Wyslane' status"""
+def fetch_orders_by_status(status_id: int) -> list:
+    """Fetch ALL orders with a given status ID."""
     all_orders = []
     last_order_id = 0
 
     while True:
         params = {
-            'status_id': WYSLANE_STATUS_ID,
+            'status_id': status_id,
             'get_unconfirmed_orders': False
         }
         if last_order_id > 0:
@@ -810,6 +812,18 @@ def fetch_all_wyslane_orders() -> list:
             break
 
     return all_orders
+
+
+def fetch_all_financial_orders() -> list:
+    """Fetch ALL orders from statuses that count toward financials (Wysłane + Spakowane)."""
+    all_orders = {}
+    for status_id in FINANCIAL_STATUS_IDS:
+        status_orders = fetch_orders_by_status(status_id)
+        print(f"Fetched {len(status_orders)} orders for status {status_id}")
+        for o in status_orders:
+            all_orders[o['order_id']] = o  # deduplicate by order_id
+    print(f"Total financial orders (Wysłane + Spakowane): {len(all_orders)}")
+    return list(all_orders.values())
 
 
 def fetch_recent_orders_all_statuses(days: int = 90) -> list:
@@ -1201,7 +1215,7 @@ def refresh_data():
             traceback.print_exc()
 
         # Fetch orders and aggregate sales
-        orders = fetch_all_wyslane_orders()
+        orders = fetch_all_financial_orders()
 
         # Also fetch recent orders from ALL statuses for date-filtered views
         # (Today/Yesterday/etc. should show all orders, not just shipped ones)
@@ -1216,15 +1230,15 @@ def refresh_data():
         # For "All Time" view: merge fresh API orders with historical DB orders
         # DB has orders that BaseLinker may have archived (older than 3 months)
         db_orders = load_orders_from_db()
-        merged_wysłane = {}
-        # Start with DB orders (includes historical)
+        merged_financial = {}
+        # Start with DB orders (includes historical) — only financial statuses
         for o in db_orders:
-            if o.get('status_id') == WYSLANE_STATUS_ID:
-                merged_wysłane[o['order_id']] = o
+            if o.get('status_id') in FINANCIAL_STATUS_IDS:
+                merged_financial[o['order_id']] = o
         # Override with fresh API data (more up-to-date)
         for o in orders:
-            merged_wysłane[o['order_id']] = o
-        orders_merged = list(merged_wysłane.values())
+            merged_financial[o['order_id']] = o
+        orders_merged = list(merged_financial.values())
 
         db_order_count = get_db_order_count()
         api_order_count = len(orders)
@@ -2003,7 +2017,7 @@ async def debug_orders(user: dict = Depends(require_admin)):
         })
 
     return {
-        "total_cached_wyslane_orders": len(raw_orders) if raw_orders else 0,
+        "total_cached_financial_orders": len(raw_orders) if raw_orders else 0,
         "total_cached_all_status_orders": len(all_recent) if all_recent else 0,
         "source_names": cache.get("order_sources", {}),
         "recent_orders": debug_list
@@ -2020,8 +2034,8 @@ async def debug_orders_db(user: dict = Depends(require_admin)):
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM bl_orders")
         total = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM bl_orders WHERE status_id = %s", (WYSLANE_STATUS_ID,))
-        shipped = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM bl_orders WHERE status_id = ANY(%s)", (list(FINANCIAL_STATUS_IDS),))
+        financial = cur.fetchone()[0]
         cur.execute("SELECT MIN(date_add), MAX(date_add) FROM bl_orders")
         row = cur.fetchone()
         min_date = datetime.fromtimestamp(row[0], tz=POLISH_TZ).strftime("%Y-%m-%d") if row[0] else None
@@ -2033,14 +2047,14 @@ async def debug_orders_db(user: dict = Depends(require_admin)):
         sources = [{"source": r[0], "count": r[1]} for r in cur.fetchall()]
         cur.close()
 
-        api_wysłane = len(cache.get("raw_orders", []) or [])
+        api_financial = len(cache.get("raw_orders", []) or [])
         return {
             "db_total_orders": total,
-            "db_shipped_orders": shipped,
+            "db_financial_orders": financial,
             "db_oldest_order": min_date,
             "db_newest_order": max_date,
             "db_sources": sources,
-            "api_wysłane_cached": api_wysłane,
+            "api_financial_cached": api_financial,
             "extra_from_db": max(0, len(cache.get("raw_orders", []) or []) - len(cache.get("all_recent_orders", []) or [])),
         }
     except Exception as e:
@@ -2108,7 +2122,7 @@ async def download_excel(
     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
     ws.merge_cells('A1:G1')
-    ws['A1'] = "BASELINKER SALES REPORT - WYSLANE ORDERS"
+    ws['A1'] = "BASELINKER SALES REPORT - SHIPPED & PACKED ORDERS"
     ws['A1'].font = Font(bold=True, size=14)
 
     # Show active filters in subtitle
