@@ -253,65 +253,59 @@
             margin-top: 8px;
         }
 
-        /* ========== AUTH SCREENS ========== */
+        /* ========== AUTH SCREENS — Glass Design ========== */
         .auth-screen {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: linear-gradient(135deg, #4472C4 0%, #2c5aa0 50%, #1a3d7c 100%);
+            background: #0f0f0f;
             display: flex; align-items: center; justify-content: center;
             z-index: 9999;
         }
         .auth-screen.hidden { display: none; }
         .auth-card {
-            background: white; border-radius: 16px; padding: 40px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            background: rgba(255,255,255,0.06);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px; padding: 44px 36px;
             width: 90%; max-width: 380px; text-align: center;
         }
-        .auth-card h2 { font-size: 22px; margin-bottom: 8px; color: #333; }
-        .auth-card p { color: #666; font-size: 14px; margin-bottom: 24px; }
-        .auth-card .logo { font-size: 36px; margin-bottom: 16px; }
+        .auth-card h2 { font-size: 20px; margin-bottom: 6px; color: #fff; font-weight: 600; letter-spacing: -0.3px; }
+        .auth-card p { color: rgba(255,255,255,0.5); font-size: 14px; margin-bottom: 28px; }
 
-        /* PIN dots */
-        .pin-dots { display: flex; justify-content: center; gap: 16px; margin-bottom: 32px; }
-        .pin-dot {
-            width: 16px; height: 16px; border-radius: 50%;
-            border: 2px solid #4472C4; background: white; transition: all 0.2s;
+        /* PIN input field */
+        .pin-input-wrap { margin-bottom: 24px; }
+        .pin-input {
+            width: 160px; text-align: center; letter-spacing: 14px; font-size: 28px; font-weight: 700;
+            padding: 14px 20px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 12px; color: #fff; caret-color: rgba(255,255,255,0.5);
+            transition: border-color 0.2s;
         }
-        .pin-dot.filled { background: #4472C4; transform: scale(1.1); }
-        .pin-dot.error { border-color: #dc3545; background: #dc3545; }
+        .pin-input:focus { outline: none; border-color: rgba(255,255,255,0.35); }
+        .pin-input.error { border-color: #ef4444; animation: shake 0.4s ease; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
 
-        /* PIN keypad */
-        .pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 260px; margin: 0 auto; }
-        .pin-key {
-            width: 70px; height: 70px; border-radius: 50%; border: 1px solid #e0e0e0;
-            background: #f8f9fa; font-size: 24px; font-weight: 600; color: #333;
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
-            transition: all 0.15s; margin: 0 auto;
-        }
-        .pin-key:active { background: #4472C4; color: white; transform: scale(0.95); }
-        .pin-key.empty { visibility: hidden; }
-        .pin-key.backspace { font-size: 18px; }
+        .auth-link { color: rgba(255,255,255,0.5); cursor: pointer; font-size: 13px; margin-top: 16px; display: inline-block; transition: color 0.2s; }
+        .auth-link:hover { color: rgba(255,255,255,0.8); text-decoration: none; }
+        .auth-message { padding: 10px 14px; border-radius: 10px; margin-bottom: 16px; font-size: 13px; }
+        .auth-message.error { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+        .auth-message.success { background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
 
-        .auth-link { color: #4472C4; cursor: pointer; font-size: 13px; margin-top: 16px; display: inline-block; }
-        .auth-link:hover { text-decoration: underline; }
-        .auth-message { padding: 10px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
-        .auth-message.error { background: #fff5f5; color: #c00; border: 1px solid #ffcccc; }
-        .auth-message.success { background: #f0fff4; color: #28a745; border: 1px solid #c3e6cb; }
-
-        /* Auth form fields */
+        /* Auth form fields — glass style */
         .auth-field { margin-bottom: 16px; text-align: left; }
-        .auth-field label { display: block; font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; margin-bottom: 6px; }
+        .auth-field label { display: block; font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
         .auth-field input {
-            width: 100%; padding: 12px 16px; border: 1px solid #d0d0d0; border-radius: 8px;
-            font-size: 15px; transition: border-color 0.2s;
+            width: 100%; padding: 13px 16px;
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px; font-size: 15px; color: #fff; transition: border-color 0.2s;
         }
-        .auth-field input:focus { outline: none; border-color: #4472C4; box-shadow: 0 0 0 3px rgba(68,114,196,0.15); }
+        .auth-field input::placeholder { color: rgba(255,255,255,0.25); }
+        .auth-field input:focus { outline: none; border-color: rgba(255,255,255,0.3); box-shadow: 0 0 0 3px rgba(255,255,255,0.05); }
         .auth-btn {
-            width: 100%; padding: 14px; background: #4472C4; color: white; border: none;
-            border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer;
-            transition: background 0.2s; margin-top: 8px;
+            width: 100%; padding: 14px; background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s; margin-top: 8px;
         }
-        .auth-btn:hover { background: #3661b0; }
-        .auth-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .auth-btn:hover { background: rgba(255,255,255,0.18); }
+        .auth-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
         /* ========== ADMIN PANEL ========== */
         .admin-panel { display: none; padding: 20px 30px; padding-bottom: 100px; }
@@ -448,29 +442,11 @@
     <!-- ===== LOGIN: PIN ===== -->
     <div class="auth-screen" id="login-pin-screen">
         <div class="auth-card">
-            <div class="logo">&#128274;</div>
             <h2>BL Sales Dashboard</h2>
-            <p>Enter your 4-digit PIN</p>
+            <p>Enter your PIN</p>
             <div id="pin-message"></div>
-            <div class="pin-dots">
-                <div class="pin-dot" id="dot-0"></div>
-                <div class="pin-dot" id="dot-1"></div>
-                <div class="pin-dot" id="dot-2"></div>
-                <div class="pin-dot" id="dot-3"></div>
-            </div>
-            <div class="pin-keypad">
-                <div class="pin-key" onclick="pinPress('1')">1</div>
-                <div class="pin-key" onclick="pinPress('2')">2</div>
-                <div class="pin-key" onclick="pinPress('3')">3</div>
-                <div class="pin-key" onclick="pinPress('4')">4</div>
-                <div class="pin-key" onclick="pinPress('5')">5</div>
-                <div class="pin-key" onclick="pinPress('6')">6</div>
-                <div class="pin-key" onclick="pinPress('7')">7</div>
-                <div class="pin-key" onclick="pinPress('8')">8</div>
-                <div class="pin-key" onclick="pinPress('9')">9</div>
-                <div class="pin-key empty"></div>
-                <div class="pin-key" onclick="pinPress('0')">0</div>
-                <div class="pin-key backspace" onclick="pinBackspace()">&#9003;</div>
+            <div class="pin-input-wrap">
+                <input type="password" id="pin-input" class="pin-input" maxlength="4" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autofocus>
             </div>
             <div id="pin-fallback" style="display:none">
                 <span class="auth-link" onclick="showScreen('login-email-screen')">Use email &amp; password instead</span>
@@ -481,7 +457,6 @@
     <!-- ===== LOGIN: EMAIL ===== -->
     <div class="auth-screen hidden" id="login-email-screen">
         <div class="auth-card">
-            <div class="logo">&#128231;</div>
             <h2>Sign In</h2>
             <p>Enter your email and password</p>
             <div id="email-message"></div>
@@ -496,7 +471,7 @@
             <button class="auth-btn" onclick="emailLogin()">Sign In</button>
             <div style="margin-top: 12px;">
                 <span class="auth-link" onclick="showScreen('login-pin-screen')">Use PIN instead</span>
-                &nbsp;|&nbsp;
+                <span style="color:rgba(255,255,255,0.2);margin:0 6px">|</span>
                 <span class="auth-link" onclick="showScreen('reset-request-screen')">Forgot password?</span>
             </div>
         </div>
@@ -505,7 +480,6 @@
     <!-- ===== SET PASSWORD ===== -->
     <div class="auth-screen hidden" id="set-password-screen">
         <div class="auth-card">
-            <div class="logo">&#128275;</div>
             <h2>Set Your Password</h2>
             <p>Create a password for email sign-in</p>
             <div id="setpw-message"></div>
@@ -524,7 +498,6 @@
     <!-- ===== RESET REQUEST ===== -->
     <div class="auth-screen hidden" id="reset-request-screen">
         <div class="auth-card">
-            <div class="logo">&#128232;</div>
             <h2>Reset Password</h2>
             <p>Your request will be sent to the admin</p>
             <div id="reset-message"></div>
@@ -539,7 +512,7 @@
             <button class="auth-btn" onclick="submitResetRequest()">Send Request</button>
             <div style="margin-top: 12px;">
                 <span class="auth-link" onclick="showScreen('login-pin-screen')">Back to PIN</span>
-                &nbsp;|&nbsp;
+                <span style="color:rgba(255,255,255,0.2);margin:0 6px">|</span>
                 <span class="auth-link" onclick="showScreen('temp-password-screen')">I have a temp password</span>
             </div>
         </div>
@@ -548,7 +521,6 @@
     <!-- ===== USE TEMP PASSWORD ===== -->
     <div class="auth-screen hidden" id="temp-password-screen">
         <div class="auth-card">
-            <div class="logo">&#128273;</div>
             <h2>Temp Password</h2>
             <p>Enter the temp password from admin and set a new one</p>
             <div id="temp-message"></div>
@@ -840,38 +812,30 @@
         }
 
         // ========== PIN LOGIN ==========
-        let pinBuffer = '';
-
-        function pinPress(digit) {
-            if (pinBuffer.length >= 4) return;
-            pinBuffer += digit;
-            updatePinDots();
-            if (pinBuffer.length === 4) {
-                setTimeout(() => submitPin(), 200);
-            }
-        }
-
-        function pinBackspace() {
-            pinBuffer = pinBuffer.slice(0, -1);
-            updatePinDots();
-        }
-
-        function updatePinDots() {
-            for (let i = 0; i < 4; i++) {
-                const dot = document.getElementById('dot-' + i);
-                if (dot) {
-                    dot.classList.toggle('filled', i < pinBuffer.length);
-                    dot.classList.remove('error');
+        function initPinInput() {
+            const pinInput = document.getElementById('pin-input');
+            if (!pinInput) return;
+            pinInput.addEventListener('input', function() {
+                this.value = this.value.replace(/[^0-9]/g, '').slice(0, 4);
+                this.classList.remove('error');
+                if (this.value.length === 4) {
+                    submitPin(this.value);
                 }
-            }
+            });
+            pinInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && this.value.length === 4) {
+                    submitPin(this.value);
+                }
+            });
         }
 
-        async function submitPin() {
+        async function submitPin(pin) {
+            const pinInput = document.getElementById('pin-input');
             try {
                 const resp = await fetch('/api/auth/pin', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pin: pinBuffer })
+                    body: JSON.stringify({ pin: pin })
                 });
                 const data = await resp.json();
 
@@ -884,10 +848,7 @@
                         fetchSalesData();
                     }
                 } else {
-                    for (let i = 0; i < 4; i++) {
-                        const dot = document.getElementById('dot-' + i);
-                        if (dot) dot.classList.add('error');
-                    }
+                    if (pinInput) { pinInput.classList.add('error'); pinInput.value = ''; pinInput.focus(); }
                     if (data.fallback === 'email_password') {
                         document.getElementById('pin-fallback').style.display = 'block';
                         showMessage('pin-message', data.message, 'error');
@@ -897,9 +858,8 @@
                 }
             } catch (e) {
                 showMessage('pin-message', 'Connection error', 'error');
+                if (pinInput) { pinInput.value = ''; pinInput.focus(); }
             }
-            pinBuffer = '';
-            setTimeout(updatePinDots, 600);
         }
 
         // ========== EMAIL LOGIN ==========
@@ -1916,6 +1876,7 @@
         function initApp() {
             applyLanguage();
             updateTimeBarUI();
+            initPinInput();
 
             if (authToken && currentUser) {
                 authFetch('/api/auth/me').then(resp => {

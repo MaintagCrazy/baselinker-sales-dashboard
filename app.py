@@ -286,7 +286,7 @@ def create_session(user_id: int, request: Request) -> str:
     jti = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     expires = now + timedelta(hours=JWT_EXPIRY_HOURS)
-    payload = {"sub": user_id, "jti": jti, "exp": expires, "iat": now}
+    payload = {"sub": str(user_id), "jti": jti, "exp": expires, "iat": now}
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
     conn = get_db_connection()
@@ -309,7 +309,7 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get("sub")
+        user_id = int(payload.get("sub", 0))
         jti = payload.get("jti")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
