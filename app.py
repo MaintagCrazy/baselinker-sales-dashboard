@@ -76,7 +76,7 @@ cache = {
     "purchase_orders": [],
     "raw_orders": None,
     "inventory": None,
-    "po_items_by_sku": None,
+    "po_items_by_bl_id": None,
     "order_sources": {},
     "all_recent_orders": None,
     "costs": ({}, {}),
@@ -244,16 +244,17 @@ def load_costs_and_pos_from_import_sheet():
     """Load product costs AND purchase order data from Google Sheets import tabs.
 
     Each tab = one invoice/purchase order. Tab name = invoice name.
-    Returns (costs_by_sku, costs_by_base_sku, po_list, po_items_by_sku).
+    Returns (costs_by_sku, costs_by_base_sku, po_list, po_items_by_bl_id).
+    PO matching is by BaseLinker Variant ID (column B) — exact numeric match, no SKU guessing.
     """
     costs_by_sku = {}
     costs_by_base_sku = {}
     po_list = []
-    po_items_by_sku = {}  # SKU -> [PO references]
+    po_items_by_bl_id = {}  # BaseLinker Variant ID -> [PO references]
 
     if not GOOGLE_CREDENTIALS_JSON:
         print("GOOGLE_CREDENTIALS_JSON not configured, skipping cost loading")
-        return costs_by_sku, costs_by_base_sku, po_list, po_items_by_sku
+        return costs_by_sku, costs_by_base_sku, po_list, po_items_by_bl_id
 
     try:
         import gspread
@@ -372,11 +373,11 @@ def load_costs_and_pos_from_import_sheet():
                     'product_sku': full_sku,
                 }
 
-                # Add to PO items map (keyed by multiple SKU forms for matching)
-                for sku_key in set([full_sku, model]):
-                    if sku_key not in po_items_by_sku:
-                        po_items_by_sku[sku_key] = []
-                    po_items_by_sku[sku_key].append(po_item)
+                # Add to PO items map keyed by BaseLinker Variant ID (exact match)
+                if bl_variant and bl_variant != '0':
+                    if bl_variant not in po_items_by_bl_id:
+                        po_items_by_bl_id[bl_variant] = []
+                    po_items_by_bl_id[bl_variant].append(po_item)
 
                 # Track in PO entry
                 po_entry['product_skus'].append(full_sku)
@@ -395,14 +396,14 @@ def load_costs_and_pos_from_import_sheet():
                 print(f"  Sheet '{tab_name}': {count} items, {po_entry['total_quantity']} units, {po_entry['total_cost']} PLN")
 
         print(f"Total costs loaded: {len(costs_by_sku)} SKU, {len(costs_by_base_sku)} base SKU")
-        print(f"Total import POs: {len(po_list)} invoices, {len(po_items_by_sku)} SKU mappings")
+        print(f"Total import POs: {len(po_list)} invoices, {len(po_items_by_bl_id)} BL variant ID mappings")
 
     except Exception as e:
         print(f"Error loading costs/POs from sheets: {e}")
         import traceback
         traceback.print_exc()
 
-    return costs_by_sku, costs_by_base_sku, po_list, po_items_by_sku
+    return costs_by_sku, costs_by_base_sku, po_list, po_items_by_bl_id
 
 
 def find_cost_for_sku(sku, costs_by_sku, costs_by_base_sku):
@@ -709,57 +710,6 @@ def get_inventory(product_ids: list) -> dict:
     return inventory
 
 
-def find_po_items_for_sku(sku, po_items_by_sku):
-    """Find purchase order items for a SKU using progressive matching.
-    Aggregates ALL matching PO items across tiers (exact + base + prefix),
-    deduplicating by document_number so a product shows ALL invoices it appears in.
-    """
-    if not sku or not po_items_by_sku:
-        return []
-
-    sku_upper = sku.strip().upper()
-    seen_docs = set()
-    result = []
-
-    def _add_items(items):
-        for item in items:
-            doc = item.get('document_number', '')
-            if doc not in seen_docs:
-                seen_docs.add(doc)
-                result.append(item)
-
-    # 1. Exact match
-    if sku_upper in po_items_by_sku:
-        _add_items(po_items_by_sku[sku_upper])
-
-    # 2. Progressive base SKU matching (S-91-451 → S-91, but NOT → S)
-    # Minimum 2 segments to avoid matching unrelated models (S-71, S-83 etc.)
-    parts = sku_upper.split('-')
-    for i in range(len(parts) - 1, 1, -1):  # stop at 2 segments minimum
-        candidate = '-'.join(parts[:i])
-        if candidate in po_items_by_sku:
-            _add_items(po_items_by_sku[candidate])
-
-    return result
-
-
-def _sku_matches_set(sku, sku_set, base_skus):
-    """Check if a product SKU matches any SKU in the PO's set (progressive matching)."""
-    if not sku:
-        return False
-    sku_upper = sku.strip().upper()
-    # Exact match
-    if sku_upper in sku_set:
-        return True
-    # Progressive base matching: S-91-451 → check S-91-451, S-91, S against base_skus
-    parts = sku_upper.split('-')
-    for i in range(len(parts), 0, -1):
-        candidate = '-'.join(parts[:i])
-        if candidate in base_skus:
-            return True
-    return False
-
-
 def filter_products(products: list, category: str = "", po: str = "", search: str = "") -> list:
     """Apply filters to product list (shared between API and Excel download)"""
     filtered = products
@@ -769,15 +719,10 @@ def filter_products(products: list, category: str = "", po: str = "", search: st
 
     if po:
         po_data = next((p for p in cache.get("purchase_orders", []) if str(p.get('po_id')) == po), None)
-        if po_data and po_data.get('product_skus'):
-            sku_set = set(s.upper() for s in po_data['product_skus'])
-            # Also build base SKU set for matching (e.g., S-91 matches S-91-451)
-            base_skus = set()
-            for s in sku_set:
-                parts = s.split('-')
-                for i in range(1, len(parts) + 1):
-                    base_skus.add('-'.join(parts[:i]))
-            filtered = [p for p in filtered if _sku_matches_set(p.get('sku', ''), sku_set, base_skus)]
+        if po_data and po_data.get('product_ids'):
+            # Filter by BaseLinker Variant IDs — exact match, no guessing
+            bl_id_set = set(str(bid) for bid in po_data['product_ids'])
+            filtered = [p for p in filtered if str(p.get('bl_product_id', '')) in bl_id_set]
 
     if search:
         variant_match = re.search(r'[?&]variant=(\d+)', search)
@@ -811,8 +756,8 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
         inv_info = inventory.get(bl_pid, {})
         revenue = round(data['total_revenue'], 2)
         total_revenue += revenue
-        # Match POs by SKU (from import sheet tabs), not by BaseLinker product ID
-        product_pos = find_po_items_for_sku(data['sku'], po_items_map) if po_items_map else []
+        # Match POs by BaseLinker Variant ID — exact numeric match from import sheet column B
+        product_pos = po_items_map.get(bl_pid, []) if po_items_map else []
         if product_pos:
             po_match_count += 1
 
@@ -908,12 +853,12 @@ def refresh_data():
         # Each tab = one invoice. Tab name = invoice name.
         # Wrapped separately so a Google Sheets error doesn't block order fetching
         po_list = []
-        po_items_by_sku = {}
+        po_items_by_bl_id = {}
         try:
             print("Loading costs and purchase orders from import sheets...")
-            costs_by_sku, costs_by_base_sku, po_list, po_items_by_sku = load_costs_and_pos_from_import_sheet()
+            costs_by_sku, costs_by_base_sku, po_list, po_items_by_bl_id = load_costs_and_pos_from_import_sheet()
             cache["costs"] = (costs_by_sku, costs_by_base_sku)
-            cache["po_items_by_sku"] = po_items_by_sku
+            cache["po_items_by_bl_id"] = po_items_by_bl_id
         except Exception as e:
             print(f"WARNING: Cost/PO loading failed (orders will still load): {e}")
             import traceback
@@ -946,8 +891,8 @@ def refresh_data():
         # Cache inventory for reuse
         cache["inventory"] = inventory
 
-        # PO items map for build_response (SKU-keyed, from import sheets)
-        po_items_map = po_items_by_sku
+        # PO items map for build_response (keyed by BaseLinker Variant ID)
+        po_items_map = po_items_by_bl_id
 
         # Build full response using helper
         response_data = build_response(orders, inventory, po_items_map, order_sources)
@@ -1036,7 +981,7 @@ async def get_sales(
     # so "Yesterday" shows all 12 orders, not just 2 shipped ones
     raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
     inventory = cache.get("inventory") or {}
-    po_items_map = cache.get("po_items_by_sku") or {}
+    po_items_map = cache.get("po_items_by_bl_id") or {}
     order_sources = cache.get("order_sources", {})
 
     if raw_orders is None:
@@ -1129,21 +1074,21 @@ async def get_activity():
 async def debug_costs():
     """Debug: show cost and PO loading status"""
     costs = cache.get("costs", ({}, {}))
-    po_items = cache.get("po_items_by_sku", {})
+    po_items = cache.get("po_items_by_bl_id", {})
     pos = cache.get("purchase_orders", [])
     return {
         "google_credentials_set": bool(GOOGLE_CREDENTIALS_JSON),
         "import_sheet_id": IMPORT_SHEET_ID,
         "costs_by_sku_count": len(costs[0]) if costs else 0,
         "costs_by_base_sku_count": len(costs[1]) if costs else 0,
-        "po_items_by_sku_count": len(po_items),
+        "po_items_by_bl_id_count": len(po_items),
         "purchase_orders_count": len(pos),
         "purchase_orders": [
-            {"name": po.get("document_number"), "items": po.get("items_count"), "skus": po.get("product_skus", [])[:5]}
+            {"name": po.get("document_number"), "items": po.get("items_count"), "bl_ids": po.get("product_ids", [])[:5]}
             for po in pos[:10]
         ],
         "sample_costs": dict(list((costs[0] if costs else {}).items())[:10]),
-        "sample_po_skus": list(po_items.keys())[:20],
+        "sample_bl_ids": list(po_items.keys())[:20],
     }
 
 
@@ -1212,7 +1157,7 @@ async def download_excel(
         # Use ALL-status orders for date-filtered views (same as /api/sales)
         raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
         inventory = cache.get("inventory") or {}
-        po_items_map = cache.get("po_items_by_sku") or {}
+        po_items_map = cache.get("po_items_by_bl_id") or {}
         order_sources = cache.get("order_sources", {})
 
         if raw_orders is None:

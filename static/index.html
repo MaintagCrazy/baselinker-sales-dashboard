@@ -1053,27 +1053,10 @@
             const poFilter = document.getElementById('filter-po').value;
             if (poFilter) {
                 const po = purchaseOrders.find(p => String(p.po_id) === poFilter);
-                if (po && po.product_skus) {
-                    // Build base SKU set for progressive matching
-                    const skuSet = new Set(po.product_skus.map(s => s.toUpperCase()));
-                    const baseSkus = new Set();
-                    skuSet.forEach(s => {
-                        const parts = s.split('-');
-                        for (let i = 1; i <= parts.length; i++) {
-                            baseSkus.add(parts.slice(0, i).join('-'));
-                        }
-                    });
-                    products = products.filter(p => {
-                        const sku = (p.sku || '').toUpperCase();
-                        if (!sku) return false;
-                        if (skuSet.has(sku)) return true;
-                        // Progressive base match: S-91-451 → S-91-451, S-91, S
-                        const parts = sku.split('-');
-                        for (let i = parts.length; i > 0; i--) {
-                            if (baseSkus.has(parts.slice(0, i).join('-'))) return true;
-                        }
-                        return false;
-                    });
+                if (po && po.product_ids && po.product_ids.length > 0) {
+                    // Filter by BaseLinker Variant ID — exact match
+                    const blIdSet = new Set(po.product_ids.map(id => String(id)));
+                    products = products.filter(p => blIdSet.has(String(p.bl_product_id || '')));
                 }
             }
 
