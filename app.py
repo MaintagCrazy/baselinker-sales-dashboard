@@ -222,6 +222,11 @@ def init_database():
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_bl_orders_date_add ON bl_orders(date_add)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_bl_orders_status ON bl_orders(status_id)")
+        # Backfill status_id from order_data JSONB for rows where it's NULL
+        cur.execute("""
+            UPDATE bl_orders SET status_id = (order_data->>'order_status_id')::INTEGER
+            WHERE status_id IS NULL AND order_data->>'order_status_id' IS NOT NULL
+        """)
         conn.commit()
 
         # Seed admin user
@@ -263,7 +268,7 @@ def save_orders_to_db(orders: list):
                 oid,
                 order.get('date_add', 0),
                 order.get('date_confirmed', 0),
-                order.get('status_id'),
+                order.get('order_status_id') or order.get('status_id'),
                 order.get('order_source', ''),
                 order.get('order_source_id', 0),
                 (order.get('currency', '') or 'PLN').upper(),
@@ -1324,7 +1329,8 @@ def refresh_data():
         merged_financial = {}
         # Start with DB orders (includes historical) — only financial statuses
         for o in db_orders:
-            if o.get('status_id') in FINANCIAL_STATUS_IDS:
+            o_status = o.get('order_status_id') or o.get('status_id')
+            if o_status in FINANCIAL_STATUS_IDS:
                 merged_financial[o['order_id']] = o
         # Override with fresh API data (more up-to-date)
         for o in orders:
