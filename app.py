@@ -105,17 +105,34 @@ db_conn = None
 
 
 def get_db_connection():
-    """Get PostgreSQL connection"""
+    """Get PostgreSQL connection with auto-reconnect."""
     global db_conn
     if not DATABASE_URL:
         return None
     try:
         import psycopg2
-        if db_conn is None or db_conn.closed:
-            db_conn = psycopg2.connect(DATABASE_URL)
+        # Check if existing connection is usable
+        if db_conn is not None and not db_conn.closed:
+            try:
+                db_conn.isolation_level  # triggers check
+                cur = db_conn.cursor()
+                cur.execute("SELECT 1")
+                cur.close()
+                return db_conn
+            except Exception:
+                # Connection is broken — close and reconnect
+                try:
+                    db_conn.close()
+                except Exception:
+                    pass
+                db_conn = None
+
+        db_conn = psycopg2.connect(DATABASE_URL)
+        db_conn.autocommit = False
         return db_conn
     except Exception as e:
         print(f"Database connection error: {e}")
+        db_conn = None
         return None
 
 
@@ -413,6 +430,8 @@ def create_session(user_id: int, request: Request) -> str:
             cur.close()
         except Exception as e:
             print(f"Session creation error: {e}")
+            try: conn.rollback()
+            except: pass
     return token
 
 async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -460,6 +479,8 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
     except HTTPException:
         raise
     except Exception as e:
+        try: conn.rollback()
+        except: pass
         raise HTTPException(status_code=500, detail=f"Auth error: {e}")
 
 async def require_admin(user: dict = Depends(get_current_user)):
@@ -1460,8 +1481,9 @@ async def pin_login(req: PinLoginRequest, request: Request):
 
         if attempts >= 3:
             return {"success": False, "fallback": "email_password", "message": "Too many PIN attempts. Use email and password."}
-    except:
-        pass
+    except Exception:
+        try: conn.rollback()
+        except: pass
 
     # Find users with PINs
     try:
@@ -1470,6 +1492,8 @@ async def pin_login(req: PinLoginRequest, request: Request):
         users = cur.fetchall()
         cur.close()
     except Exception as e:
+        try: conn.rollback()
+        except: pass
         raise HTTPException(status_code=500, detail=str(e))
 
     matched_user = None
@@ -1484,8 +1508,9 @@ async def pin_login(req: PinLoginRequest, request: Request):
         cur.execute("INSERT INTO pin_attempts (ip_address, success) VALUES (%s, %s)", (ip, matched_user is not None))
         conn.commit()
         cur.close()
-    except:
-        pass
+    except Exception:
+        try: conn.rollback()
+        except: pass
 
     if not matched_user:
         # Check if this was the 3rd failure
