@@ -760,14 +760,14 @@
                     body: JSON.stringify({ pin })
                 });
                 const data = await resp.json();
-                if (resp.ok) {
+                if (data.success && data.token && data.user) {
                     handleLoginSuccess(data);
                 } else {
                     pinAttempts++;
                     const card = document.getElementById('pin-login-card');
                     card.classList.add('shake');
                     setTimeout(() => card.classList.remove('shake'), 400);
-                    errEl.textContent = data.detail || 'Invalid PIN';
+                    errEl.textContent = data.message || data.detail || 'Invalid PIN';
                     document.getElementById('pin-input').value = '';
                     if (pinAttempts >= 3 || data.fallback === 'email_password') {
                         document.getElementById('pin-fallback-link').style.display = '';
