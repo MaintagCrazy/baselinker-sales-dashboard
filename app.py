@@ -95,6 +95,7 @@ cache = {
     "order_sources": {},
     "all_recent_orders": None,
     "costs": ({}, {}),
+    "full_inventory": [],  # All products/variants for search (name, sku, stock, image, bl_id)
 }
 
 REFRESH_INTERVAL = 3600  # 1 hour in seconds
@@ -1060,6 +1061,96 @@ def get_inventory(product_ids: list) -> dict:
     return inventory
 
 
+def fetch_full_inventory() -> list:
+    """Fetch ALL products and variants from BaseLinker inventory for search.
+    Returns a flat list of dicts with: bl_product_id, product_name, sku, current_stock, image_url, category.
+    """
+    # Step 1: Get all parent products
+    all_parents = {}
+    page = 1
+    while True:
+        result = call_baselinker('getInventoryProductsList', {
+            'inventory_id': BASELINKER_INVENTORY_ID,
+            'page': page
+        })
+        if "error" in result:
+            break
+        products = result.get('products', {})
+        if not products:
+            break
+        all_parents.update(products)
+        page += 1
+        time.sleep(0.3)
+
+    print(f"Inventory: {len(all_parents)} parent products found")
+
+    # Step 2: Get detailed data for all parents (includes variants via getInventoryProductsData)
+    parent_ids = list(int(pid) for pid in all_parents.keys())
+    full_list = []
+
+    for i in range(0, len(parent_ids), 100):
+        batch = parent_ids[i:i+100]
+        result = call_baselinker('getInventoryProductsData', {
+            'inventory_id': BASELINKER_INVENTORY_ID,
+            'products': batch
+        })
+        if "error" in result:
+            continue
+
+        for pid_str, pdata in result.get('products', {}).items():
+            name = pdata.get('text_fields', {}).get('name', '') or all_parents.get(pid_str, {}).get('name', '')
+            sku = pdata.get('text_fields', {}).get('sku', '') or all_parents.get(pid_str, {}).get('sku', '')
+            stock_data = pdata.get('stock', {})
+            total_stock = sum(int(s) for s in stock_data.values() if s)
+            images = pdata.get('images', {})
+            image_url = list(images.values())[0] if images else ''
+
+            # Check if this product has variants
+            variants = pdata.get('variants', {})
+            if variants:
+                for vid, vdata in variants.items():
+                    v_name_raw = vdata.get('name', '')
+                    v_sku = vdata.get('sku', '') or sku
+                    v_stock_data = vdata.get('stock', {})
+                    v_stock = sum(int(s) for s in v_stock_data.values() if s) if v_stock_data else total_stock
+                    v_images = vdata.get('images', {})
+                    v_image = list(v_images.values())[0] if v_images else image_url
+                    # Variant display name: "Parent Name - Variant Name"
+                    v_display = f"{name} - {v_name_raw}" if v_name_raw else name
+
+                    full_list.append({
+                        'bl_product_id': vid,
+                        'product_name': v_display,
+                        'sku': v_sku,
+                        'current_stock': v_stock,
+                        'image_url': v_image,
+                        'category': determine_category(name),
+                        'units_sold': 0,
+                        'total_revenue': 0,
+                        'sales_by_channel': {},
+                        'purchase_orders': [],
+                    })
+            else:
+                # No variants — single product
+                full_list.append({
+                    'bl_product_id': pid_str,
+                    'product_name': name,
+                    'sku': sku,
+                    'current_stock': total_stock,
+                    'image_url': image_url,
+                    'category': determine_category(name),
+                    'units_sold': 0,
+                    'total_revenue': 0,
+                    'sales_by_channel': {},
+                    'purchase_orders': [],
+                })
+
+        time.sleep(0.5)
+
+    print(f"Full inventory: {len(full_list)} products/variants indexed for search")
+    return full_list
+
+
 def filter_products(products: list, category: str = "", po: str = "", search: str = "") -> list:
     """Apply filters to product list (shared between API and Excel download)"""
     filtered = products
@@ -1263,6 +1354,13 @@ def refresh_data():
 
         # Cache inventory for reuse
         cache["inventory"] = inventory
+
+        # Fetch full inventory for search (all products/variants with names, SKUs, stock)
+        try:
+            full_inv = fetch_full_inventory()
+            cache["full_inventory"] = full_inv
+        except Exception as e:
+            print(f"WARNING: Full inventory fetch failed (search may be limited): {e}")
 
         # PO items map for build_response (keyed by BaseLinker Variant ID)
         po_items_map = po_items_by_bl_id
@@ -1837,6 +1935,47 @@ def strip_sales_data_for_stock_only(data: dict) -> dict:
         p.pop("sales_by_channel", None)
         p.pop("purchase_orders", None)
     return stripped
+
+@app.get("/api/inventory/search")
+async def search_inventory(
+    q: str = Query("", description="Search query (name, SKU, BL ID)"),
+    user: dict = Depends(get_current_user)
+):
+    """Search the full inventory (all products/variants) regardless of sales.
+    Returns products matching the query by name, SKU, or BL product ID.
+    """
+    full_inv = cache.get("full_inventory", [])
+    if not full_inv:
+        return {"products": [], "total": 0}
+
+    if not q or len(q) < 2:
+        return {"products": [], "total": 0}
+
+    query = q.lower()
+    matches = []
+    for p in full_inv:
+        if (query in (p.get('product_name') or '').lower()
+            or query in (p.get('sku') or '').lower()
+            or query in str(p.get('bl_product_id', ''))):
+            matches.append(p)
+
+    # Enrich with cost data
+    costs_by_sku, costs_by_base_sku = cache.get("costs", ({}, {}))
+    for p in matches:
+        cost, match_type = find_cost_for_sku(p.get('sku', ''), costs_by_sku, costs_by_base_sku)
+        p['unit_cost'] = round(cost, 2)
+        p['cost_match'] = match_type
+
+    is_stock_only = user.get("role") in ("stock_only", "viewer")
+    if is_stock_only:
+        for p in matches:
+            p.pop('unit_cost', None)
+            p.pop('cost_match', None)
+            p.pop('total_revenue', None)
+            p.pop('units_sold', None)
+
+    return {"products": matches[:50], "total": len(matches)}
+
 
 @app.get("/api/sales")
 async def get_sales(
