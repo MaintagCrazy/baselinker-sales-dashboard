@@ -1471,7 +1471,7 @@ async def pin_login(req: PinLoginRequest, request: Request):
 
     ip = get_client_ip(request)
 
-    # Rate limit: 3 attempts per IP in 5 minutes
+    # Rate limit: 5 attempts per IP in 5 minutes
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -1481,7 +1481,7 @@ async def pin_login(req: PinLoginRequest, request: Request):
         attempts = cur.fetchone()[0]
         cur.close()
 
-        if attempts >= 3:
+        if attempts >= 5:
             return {"success": False, "fallback": "email_password", "message": "Too many PIN attempts. Use email and password."}
     except Exception:
         try: conn.rollback()
@@ -1524,7 +1524,7 @@ async def pin_login(req: PinLoginRequest, request: Request):
             """, (ip,))
             fail_count = cur.fetchone()[0]
             cur.close()
-            if fail_count >= 3:
+            if fail_count >= 5:
                 return {"success": False, "fallback": "email_password", "message": "Too many attempts. Use email and password."}
         except:
             pass
@@ -2199,34 +2199,6 @@ async def debug_orders(user: dict = Depends(require_admin)):
         "recent_orders": debug_list
     }
 
-
-@app.get("/api/debug/users-check")
-async def debug_users_check():
-    """TEMPORARY: Debug user accounts — remove after diagnosis"""
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "Database not connected"}
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT id, email, display_name, role, pin_hash IS NOT NULL as has_pin, password_hash IS NOT NULL as has_password, is_banned, must_change_password FROM users ORDER BY id")
-        users = []
-        for r in cur.fetchall():
-            users.append({
-                "id": r[0], "email": r[1], "display_name": r[2], "role": r[3],
-                "has_pin": r[4], "has_password": r[5], "is_banned": r[6], "must_change_password": r[7]
-            })
-        # Test PIN verification for admin
-        cur.execute("SELECT pin_hash FROM users WHERE email = 'glamova.hdht@gmail.com'")
-        row = cur.fetchone()
-        pin_test = None
-        if row and row[0]:
-            pin_test = verify_pin("4523", row[0])
-        cur.close()
-        return {"users": users, "admin_pin_4523_valid": pin_test}
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        return {"error": str(e)}
 
 @app.get("/api/debug/orders-db")
 async def debug_orders_db(user: dict = Depends(require_admin)):
