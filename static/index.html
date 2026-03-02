@@ -774,7 +774,8 @@
                     }
                 }
             } catch (e) {
-                errEl.textContent = 'Connection error';
+                errEl.textContent = 'Connection error: ' + (e.message || e);
+                console.error('PIN login error:', e);
             }
         }
 
