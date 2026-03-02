@@ -208,16 +208,6 @@
             font-weight: 600;
         }
         .mobile-preset-btn:active { transform: scale(0.97); }
-        .mobile-custom-range {
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-        .mobile-custom-range label { display: block; font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; margin-bottom: 6px; }
-        .mobile-custom-range input[type="date"] { width: 100%; padding: 12px; border: 1px solid #d0d0d0; border-radius: 8px; font-size: 15px; margin-bottom: 12px; }
-        .mobile-custom-range .mobile-apply-btn { width: 100%; padding: 14px; background: #4472C4; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
-
         /* Mobile filter panel */
         .mobile-filter-panel {
             padding: 20px;
@@ -547,20 +537,10 @@
     <!-- Desktop Time Frame Bar -->
     <div class="time-bar" id="time-bar">
         <span class="time-bar-label" data-i18n="timeFrame">Time Frame</span>
-        <button class="time-btn active" data-preset="all" onclick="selectPreset('all')" data-i18n="allTime">All Time</button>
         <button class="time-btn" data-preset="today" onclick="selectPreset('today')" data-i18n="today">Today</button>
         <button class="time-btn" data-preset="yesterday" onclick="selectPreset('yesterday')" data-i18n="yesterday">Yesterday</button>
-        <button class="time-btn" data-preset="7d" onclick="selectPreset('7d')" data-i18n="last7Days">Last 7 Days</button>
-        <button class="time-btn" data-preset="30d" onclick="selectPreset('30d')" data-i18n="last30Days">Last 30 Days</button>
-        <button class="time-btn" data-preset="month" onclick="selectPreset('month')" data-i18n="thisMonth">This Month</button>
-        <button class="time-btn" data-preset="custom" onclick="selectPreset('custom')" data-i18n="custom">Custom</button>
-        <div class="date-range" id="date-range">
-            <span class="date-label" data-i18n="from">From</span>
-            <input type="date" id="date-from">
-            <span class="date-label" data-i18n="to">To</span>
-            <input type="date" id="date-to">
-            <button class="apply-btn" onclick="applyCustomRange()" data-i18n="apply">Apply</button>
-        </div>
+        <button class="time-btn active" data-preset="month" onclick="selectPreset('month')" data-i18n="thisMonth">This Month</button>
+        <button class="time-btn" data-preset="last-month" onclick="selectPreset('last-month')" data-i18n="lastMonth">Last Month</button>
     </div>
 
     <!-- Desktop Filter Bar -->
@@ -598,19 +578,10 @@
         <div class="mobile-time-panel">
             <h3 data-i18n="timeFrame">Time Frame</h3>
             <div class="mobile-preset-grid" id="mobile-preset-grid">
-                <button class="mobile-preset-btn active" data-preset="all" onclick="mobileSelectPreset('all')" data-i18n="allTime">All Time</button>
                 <button class="mobile-preset-btn" data-preset="today" onclick="mobileSelectPreset('today')" data-i18n="today">Today</button>
                 <button class="mobile-preset-btn" data-preset="yesterday" onclick="mobileSelectPreset('yesterday')" data-i18n="yesterday">Yesterday</button>
-                <button class="mobile-preset-btn" data-preset="7d" onclick="mobileSelectPreset('7d')" data-i18n="last7Days">Last 7 Days</button>
-                <button class="mobile-preset-btn" data-preset="30d" onclick="mobileSelectPreset('30d')" data-i18n="last30Days">Last 30 Days</button>
-                <button class="mobile-preset-btn" data-preset="month" onclick="mobileSelectPreset('month')" data-i18n="thisMonth">This Month</button>
-            </div>
-            <div class="mobile-custom-range">
-                <label data-i18n="from">From</label>
-                <input type="date" id="mobile-date-from">
-                <label data-i18n="to">To</label>
-                <input type="date" id="mobile-date-to">
-                <button class="mobile-apply-btn" onclick="mobileApplyCustomRange()" data-i18n="apply">Apply</button>
+                <button class="mobile-preset-btn active" data-preset="month" onclick="mobileSelectPreset('month')" data-i18n="thisMonth">This Month</button>
+                <button class="mobile-preset-btn" data-preset="last-month" onclick="mobileSelectPreset('last-month')" data-i18n="lastMonth">Last Month</button>
             </div>
         </div>
     </div>
@@ -1280,16 +1251,10 @@
                 errorLoading: 'Error loading data',
                 tryRefresh: 'Please try refreshing the page.',
                 timeFrame: 'Time Frame',
-                allTime: 'All Time',
                 today: 'Today',
                 yesterday: 'Yesterday',
-                last7Days: 'Last 7 Days',
-                last30Days: 'Last 30 Days',
                 thisMonth: 'This Month',
-                custom: 'Custom',
-                from: 'From',
-                to: 'To',
-                apply: 'Apply',
+                lastMonth: 'Last Month',
                 filters: 'Filters',
                 applyFilters: 'Apply Filters',
                 navDashboard: 'Dashboard',
@@ -1349,16 +1314,10 @@
                 errorLoading: 'L\u1ed7i t\u1ea3i d\u1eef li\u1ec7u',
                 tryRefresh: 'Vui l\u00f2ng t\u1ea3i l\u1ea1i trang.',
                 timeFrame: 'Khung th\u1eddi gian',
-                allTime: 'T\u1ea5t c\u1ea3',
                 today: 'H\u00f4m nay',
                 yesterday: 'H\u00f4m qua',
-                last7Days: '7 ng\u00e0y qua',
-                last30Days: '30 ng\u00e0y qua',
                 thisMonth: 'Th\u00e1ng n\u00e0y',
-                custom: 'T\u00f9y ch\u1ecdn',
-                from: 'T\u1eeb',
-                to: '\u0110\u1ebfn',
-                apply: '\u00c1p d\u1ee5ng',
+                lastMonth: 'Th\u00e1ng tr\u01b0\u1edbc',
                 filters: 'B\u1ed9 l\u1ecdc',
                 applyFilters: '\u00c1p d\u1ee5ng b\u1ed9 l\u1ecdc',
                 navDashboard: 'B\u1ea3ng',
@@ -1444,21 +1403,6 @@
             setTimeout(() => switchMobileView('dashboard'), 300);
         }
 
-        function mobileApplyCustomRange() {
-            const fromVal = document.getElementById('mobile-date-from').value;
-            const toVal = document.getElementById('mobile-date-to').value;
-            if (fromVal) activeDateFrom = fromVal;
-            if (toVal) activeDateTo = toVal;
-            activePreset = 'custom';
-            // Sync to desktop inputs
-            document.getElementById('date-from').value = fromVal;
-            document.getElementById('date-to').value = toVal;
-            // Reset preset highlights
-            document.querySelectorAll('#mobile-preset-grid .mobile-preset-btn').forEach(btn => btn.classList.remove('active'));
-            fetchSalesData();
-            setTimeout(() => switchMobileView('dashboard'), 300);
-        }
-
         function mobileApplyFilters() {
             // Sync mobile filters to desktop
             document.getElementById('filter-category').value = document.getElementById('mobile-filter-category').value;
@@ -1469,7 +1413,7 @@
         }
 
         // ========== TIME FRAME STATE ==========
-        let activePreset = 'all';
+        let activePreset = 'month';
         let activeDateFrom = '';
         let activeDateTo = '';
 
@@ -1486,10 +1430,6 @@
             const today = formatDate(now);
 
             switch (preset) {
-                case 'all':
-                    activeDateFrom = '';
-                    activeDateTo = '';
-                    break;
                 case 'today':
                     activeDateFrom = today;
                     activeDateTo = today;
@@ -1501,20 +1441,6 @@
                     activeDateTo = formatDate(y);
                     break;
                 }
-                case '7d': {
-                    const d = new Date(now);
-                    d.setDate(d.getDate() - 7);
-                    activeDateFrom = formatDate(d);
-                    activeDateTo = today;
-                    break;
-                }
-                case '30d': {
-                    const d = new Date(now);
-                    d.setDate(d.getDate() - 30);
-                    activeDateFrom = formatDate(d);
-                    activeDateTo = today;
-                    break;
-                }
                 case 'month': {
                     const d = new Date(now);
                     d.setDate(1); // first day of current month
@@ -1522,23 +1448,19 @@
                     activeDateTo = today;
                     break;
                 }
-                case 'custom':
-                    updateTimeBarUI();
-                    return;
+                case 'last-month': {
+                    const d = new Date(now);
+                    d.setMonth(d.getMonth() - 1);
+                    d.setDate(1); // first day of last month
+                    activeDateFrom = formatDate(d);
+                    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0); // last day of last month
+                    activeDateTo = formatDate(lastDay);
+                    break;
+                }
             }
 
             updateTimeBarUI();
             fetchSalesData();
-        }
-
-        function applyCustomRange() {
-            const fromInput = document.getElementById('date-from').value;
-            const toInput = document.getElementById('date-to').value;
-            if (fromInput) activeDateFrom = fromInput;
-            if (toInput) activeDateTo = toInput;
-            if (activeDateFrom || activeDateTo) {
-                fetchSalesData();
-            }
         }
 
         function updateTimeBarUI() {
@@ -1546,20 +1468,6 @@
             document.querySelectorAll('.time-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.getAttribute('data-preset') === activePreset);
             });
-            // Desktop date range
-            const dateRange = document.getElementById('date-range');
-            if (activePreset === 'custom') {
-                dateRange.classList.add('visible');
-                if (!document.getElementById('date-from').value) {
-                    const d = new Date(); d.setDate(d.getDate() - 7);
-                    document.getElementById('date-from').value = formatDate(d);
-                }
-                if (!document.getElementById('date-to').value) {
-                    document.getElementById('date-to').value = formatDate(new Date());
-                }
-            } else {
-                dateRange.classList.remove('visible');
-            }
             // Mobile preset buttons sync
             document.querySelectorAll('#mobile-preset-grid .mobile-preset-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.getAttribute('data-preset') === activePreset);
@@ -2093,6 +2001,12 @@
         // ========== INIT ==========
         function initApp() {
             applyLanguage();
+            // Set initial date range to "This Month"
+            const now = new Date();
+            const firstOfMonth = new Date(now);
+            firstOfMonth.setDate(1);
+            activeDateFrom = formatDate(firstOfMonth);
+            activeDateTo = formatDate(now);
             updateTimeBarUI();
             const savedToken = localStorage.getItem('bl_auth_token');
             const savedUser = localStorage.getItem('bl_user');
