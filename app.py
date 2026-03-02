@@ -38,7 +38,9 @@ BASELINKER_INVENTORY_ID = int(os.getenv("BASELINKER_INVENTORY_ID", "58952"))
 BASELINKER_API_URL = "https://api.baselinker.com/connector.php"
 WYSLANE_STATUS_ID = 273568   # Wysłane (Shipped)
 SPAKOWANE_STATUS_ID = 273928  # Spakowane (Packed)
+ANULOWANE_STATUS_ID = 273569  # Anulowane (Cancelled)
 FINANCIAL_STATUS_IDS = {WYSLANE_STATUS_ID, SPAKOWANE_STATUS_ID}  # Statuses that count toward financials
+EXCLUDED_STATUS_IDS = {ANULOWANE_STATUS_ID}  # Statuses that should NEVER count
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # Google Sheets cost loading
@@ -2057,9 +2059,13 @@ async def get_sales(
 
     # Filter orders by date_add (order creation time) — NOT date_confirmed
     # date_add is the actual order date; date_confirmed can be days later
+    # Exclude cancelled orders — they should never count toward financials
     filtered_orders = []
     for order in raw_orders:
         order_ts = order.get("date_add", 0)
+        order_status = order.get("order_status_id") or order.get("status_id")
+        if order_status in EXCLUDED_STATUS_IDS:
+            continue
         if isinstance(order_ts, (int, float)) and ts_from <= order_ts < ts_to:
             filtered_orders.append(order)
 
@@ -2271,6 +2277,7 @@ async def download_excel(
         filtered_orders = [
             o for o in raw_orders
             if ts_from <= o.get("date_add", 0) < ts_to
+            and (o.get("order_status_id") or o.get("status_id")) not in EXCLUDED_STATUS_IDS
         ]
         source_data = build_response(filtered_orders, inventory, po_items_map, order_sources)
     else:
