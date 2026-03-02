@@ -98,7 +98,7 @@ cache = {
     "full_inventory": [],  # All products/variants for search (name, sku, stock, image, bl_id)
 }
 
-REFRESH_INTERVAL = 3600  # 1 hour in seconds
+REFRESH_INTERVAL = 1800  # 30 minutes in seconds
 
 # Database connection
 db_conn = None
