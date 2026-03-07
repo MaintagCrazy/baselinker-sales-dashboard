@@ -531,6 +531,10 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                 <span data-i18n="downloadExcel">Download Excel</span>
             </button>
+            <button class="btn" id="stocks-toggle-btn" onclick="toggleStocksView()" style="background:#6f42c1;color:white;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                <span>Stocks</span>
+            </button>
         </div>
     </div>
 
@@ -541,6 +545,7 @@
         <button class="time-btn" data-preset="yesterday" onclick="selectPreset('yesterday')" data-i18n="yesterday">Yesterday</button>
         <button class="time-btn active" data-preset="month" onclick="selectPreset('month')" data-i18n="thisMonth">This Month</button>
         <button class="time-btn" data-preset="last-month" onclick="selectPreset('last-month')" data-i18n="lastMonth">Last Month</button>
+        <button class="time-btn" data-preset="3months" onclick="selectPreset('3months')" data-i18n="last3Months">Last 3 Months</button>
         <button class="time-btn" data-preset="custom" onclick="selectPreset('custom')" data-i18n="custom">Custom</button>
         <div class="date-range" id="date-range">
             <span class="date-label" data-i18n="from">From</span>
@@ -581,6 +586,49 @@
         </div>
     </div>
 
+    <!-- Stocks View -->
+    <div id="stocks-view" style="display:none;">
+        <div style="background:white;padding:12px 30px;border-bottom:1px solid #e0e0e0;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <div class="filter-group">
+                <label>Search</label>
+                <input type="text" id="stocks-search" placeholder="Search by name or SKU..." oninput="debounceStocksSearch()" style="min-width:280px;padding:8px 12px;border:1px solid #d0d0d0;border-radius:6px;font-size:13px;">
+            </div>
+            <div class="filter-group">
+                <label>Category</label>
+                <select id="stocks-category" onchange="loadStocksData()" style="padding:8px 12px;border:1px solid #d0d0d0;border-radius:6px;font-size:13px;min-width:180px;">
+                    <option value="">All Categories</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Stock Filter</label>
+                <select id="stocks-filter" onchange="loadStocksData()" style="padding:8px 12px;border:1px solid #d0d0d0;border-radius:6px;font-size:13px;min-width:160px;">
+                    <option value="">All</option>
+                    <option value="in_stock">In Stock</option>
+                    <option value="low_stock">Low Stock (1-5)</option>
+                    <option value="out_of_stock">Out of Stock</option>
+                </select>
+            </div>
+            <div style="margin-left:auto;">
+                <button class="btn btn-primary" onclick="toggleStocksView()" style="background:#4472C4;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Back to Sales
+                </button>
+            </div>
+        </div>
+        <!-- Stocks summary cards -->
+        <div style="padding:15px 30px;display:flex;gap:12px;flex-wrap:wrap;" id="stocks-summary-cards">
+        </div>
+        <div class="container" id="stocks-content">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading inventory...</p>
+            </div>
+        </div>
+        <!-- Pagination -->
+        <div id="stocks-pagination" style="padding:10px 30px;display:flex;justify-content:center;gap:8px;align-items:center;">
+        </div>
+    </div>
+
     <!-- Mobile Time View -->
     <div class="mobile-view" id="mobile-time-view">
         <div class="mobile-time-panel">
@@ -590,6 +638,7 @@
                 <button class="mobile-preset-btn" data-preset="yesterday" onclick="mobileSelectPreset('yesterday')" data-i18n="yesterday">Yesterday</button>
                 <button class="mobile-preset-btn active" data-preset="month" onclick="mobileSelectPreset('month')" data-i18n="thisMonth">This Month</button>
                 <button class="mobile-preset-btn" data-preset="last-month" onclick="mobileSelectPreset('last-month')" data-i18n="lastMonth">Last Month</button>
+                <button class="mobile-preset-btn" data-preset="3months" onclick="mobileSelectPreset('3months')" data-i18n="last3Months">Last 3 Months</button>
             </div>
             <div style="background:white;border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.06);margin-top:12px;">
                 <label style="display:block;font-size:12px;font-weight:600;color:#555;text-transform:uppercase;margin-bottom:6px;" data-i18n="from">From</label>
@@ -661,6 +710,10 @@
         <button onclick="downloadExcel()" id="nav-download">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span class="nav-label" data-i18n="navExport">Export</span>
+        </button>
+        <button onclick="toggleStocksView()" id="nav-stocks">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+            <span class="nav-label">Stocks</span>
         </button>
         <button onclick="forceRefresh()" id="nav-refresh">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -1481,6 +1534,13 @@
                     activeDateTo = formatDate(lastDay);
                     break;
                 }
+                case '3months': {
+                    const d = new Date(now);
+                    d.setDate(d.getDate() - 90);
+                    activeDateFrom = formatDate(d);
+                    activeDateTo = today;
+                    break;
+                }
                 case 'custom':
                     updateTimeBarUI();
                     return; // don't fetch yet — wait for Apply
@@ -2149,6 +2209,159 @@
             }
         }
         initApp();
+
+        // ========== STOCKS VIEW ==========
+        let stocksData = null;
+        let stocksPage = 1;
+        let stocksSearchTimeout = null;
+        let stocksViewActive = false;
+
+        function toggleStocksView() {
+            stocksViewActive = !stocksViewActive;
+            const salesElements = ['main-container', 'time-bar', 'filter-bar'];
+            const stocksView = document.getElementById('stocks-view');
+            const header = document.querySelector('.header');
+            const controls = document.querySelector('.controls');
+            const stocksBtn = document.getElementById('stocks-toggle-btn');
+
+            if (stocksViewActive) {
+                // Hide sales view
+                salesElements.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
+                if (header) header.style.display = 'none';
+                if (controls) controls.style.display = 'none';
+                stocksView.style.display = 'block';
+                if (stocksBtn) stocksBtn.style.background = '#4472C4';
+                stocksPage = 1;
+                loadStocksData();
+                // On mobile, hide other views
+                document.querySelectorAll('.mobile-view').forEach(v => v.style.display = 'none');
+            } else {
+                // Show sales view
+                salesElements.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = '';
+                });
+                if (header) header.style.display = '';
+                if (controls) controls.style.display = '';
+                stocksView.style.display = 'none';
+                if (stocksBtn) stocksBtn.style.background = '#6f42c1';
+            }
+        }
+
+        function debounceStocksSearch() {
+            clearTimeout(stocksSearchTimeout);
+            stocksSearchTimeout = setTimeout(() => {
+                stocksPage = 1;
+                loadStocksData();
+            }, 300);
+        }
+
+        async function loadStocksData() {
+            const searchVal = document.getElementById('stocks-search').value.trim();
+            const categoryVal = document.getElementById('stocks-category').value;
+            const filterVal = document.getElementById('stocks-filter').value;
+
+            const params = new URLSearchParams();
+            if (searchVal) params.set('q', searchVal);
+            if (categoryVal) params.set('category', categoryVal);
+            if (filterVal) params.set('stock_filter', filterVal);
+            params.set('page', stocksPage);
+            params.set('per_page', 50);
+
+            try {
+                const resp = await authFetch('/api/inventory/full?' + params.toString());
+                if (!resp.ok) throw new Error('Failed');
+                stocksData = await resp.json();
+                renderStocksView();
+            } catch (e) {
+                document.getElementById('stocks-content').innerHTML = '<div class="error">Failed to load inventory: ' + e.message + '</div>';
+            }
+        }
+
+        function renderStocksView() {
+            if (!stocksData) return;
+
+            // Summary cards
+            const s = stocksData.summary || {};
+            document.getElementById('stocks-summary-cards').innerHTML = `
+                <div style="flex:1;min-width:140px;background:white;padding:14px 18px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.06);cursor:pointer;border:2px solid ${!document.getElementById('stocks-filter').value ? '#4472C4' : '#eee'};" onclick="document.getElementById('stocks-filter').value='';loadStocksData()">
+                    <div style="font-size:24px;font-weight:700;color:#333;">${s.total || 0}</div>
+                    <div style="font-size:12px;color:#666;text-transform:uppercase;">Total Products</div>
+                </div>
+                <div style="flex:1;min-width:140px;background:white;padding:14px 18px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.06);cursor:pointer;border:2px solid ${document.getElementById('stocks-filter').value==='in_stock' ? '#28a745' : '#eee'};" onclick="document.getElementById('stocks-filter').value='in_stock';loadStocksData()">
+                    <div style="font-size:24px;font-weight:700;color:#28a745;">${s.in_stock || 0}</div>
+                    <div style="font-size:12px;color:#666;text-transform:uppercase;">In Stock</div>
+                </div>
+                <div style="flex:1;min-width:140px;background:white;padding:14px 18px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.06);cursor:pointer;border:2px solid ${document.getElementById('stocks-filter').value==='low_stock' ? '#fd7e14' : '#eee'};" onclick="document.getElementById('stocks-filter').value='low_stock';loadStocksData()">
+                    <div style="font-size:24px;font-weight:700;color:#fd7e14;">${s.low_stock || 0}</div>
+                    <div style="font-size:12px;color:#666;text-transform:uppercase;">Low Stock</div>
+                </div>
+                <div style="flex:1;min-width:140px;background:white;padding:14px 18px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.06);cursor:pointer;border:2px solid ${document.getElementById('stocks-filter').value==='out_of_stock' ? '#dc3545' : '#eee'};" onclick="document.getElementById('stocks-filter').value='out_of_stock';loadStocksData()">
+                    <div style="font-size:24px;font-weight:700;color:#dc3545;">${s.out_of_stock || 0}</div>
+                    <div style="font-size:12px;color:#666;text-transform:uppercase;">Out of Stock</div>
+                </div>
+            `;
+
+            // Populate category dropdown (only once if empty)
+            const catSelect = document.getElementById('stocks-category');
+            if (catSelect.options.length <= 1 && stocksData.categories) {
+                stocksData.categories.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c;
+                    opt.textContent = c;
+                    catSelect.appendChild(opt);
+                });
+            }
+
+            // Table
+            const products = stocksData.products || [];
+            let rows = '';
+            products.forEach(p => {
+                const stockClass = p.current_stock <= 0 ? 'stock-zero' : p.current_stock <= 5 ? 'stock-low' : 'stock-ok';
+                const imageHtml = p.image_url
+                    ? `<img src="${p.image_url}" class="product-image" alt="${escapeHtml(p.sku)}" onerror="imgError(this)">`
+                    : '<div class="no-image">No img</div>';
+                rows += `<tr>
+                    <td>${imageHtml}</td>
+                    <td class="product-name" title="${escapeHtml(p.product_name)}">${escapeHtml(p.product_name)}</td>
+                    <td class="sku">${escapeHtml(p.sku || '-')}</td>
+                    <td><span class="category-badge">${escapeHtml(p.category || 'Other')}</span></td>
+                    <td class="stock ${stockClass}" style="font-size:16px;font-weight:700;">${p.current_stock}</td>
+                </tr>`;
+            });
+
+            document.getElementById('stocks-content').innerHTML = `
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:70px">Image</th>
+                                <th>Product Name</th>
+                                <th>SKU</th>
+                                <th>Category</th>
+                                <th style="text-align:center">Stock</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                    <div class="summary">
+                        Showing <strong>${products.length}</strong> of <strong>${stocksData.total}</strong> products
+                    </div>
+                </div>`;
+
+            // Pagination
+            const totalPages = stocksData.pages || 1;
+            let pagHtml = '';
+            if (totalPages > 1) {
+                pagHtml += `<button class="btn" style="padding:6px 12px;font-size:13px;background:${stocksPage > 1 ? '#4472C4' : '#ccc'};color:white;border:none;border-radius:6px;cursor:pointer;" onclick="stocksPage=Math.max(1,stocksPage-1);loadStocksData()" ${stocksPage<=1?'disabled':''}>Prev</button>`;
+                pagHtml += `<span style="font-size:14px;color:#666;">Page ${stocksPage} of ${totalPages}</span>`;
+                pagHtml += `<button class="btn" style="padding:6px 12px;font-size:13px;background:${stocksPage < totalPages ? '#4472C4' : '#ccc'};color:white;border:none;border-radius:6px;cursor:pointer;" onclick="stocksPage=Math.min(${totalPages},stocksPage+1);loadStocksData()" ${stocksPage>=totalPages?'disabled':''}>Next</button>`;
+            }
+            document.getElementById('stocks-pagination').innerHTML = pagHtml;
+        }
     </script>
 </body>
 </html>

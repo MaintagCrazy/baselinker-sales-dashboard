@@ -2009,6 +2009,7 @@ async def search_inventory(
 
     return {"products": matches[:50], "total": len(matches)}
 
+
 @app.get("/api/inventory/full")
 async def full_inventory(
     q: str = Query("", description="Search query"),
@@ -2024,9 +2025,10 @@ async def full_inventory(
     full_inv = cache.get("full_inventory", [])
     if not full_inv:
         return {"products": [], "total": 0, "page": 1, "pages": 1,
+                "categories": [],
                 "summary": {"total": 0, "in_stock": 0, "low_stock": 0, "out_of_stock": 0}}
 
-    filtered = full_inv
+    filtered = list(full_inv)
 
     # Search filter
     if q and len(q) >= 1:
@@ -2048,13 +2050,13 @@ async def full_inventory(
     elif stock_filter == 'low_stock':
         filtered = [p for p in filtered if 0 < p.get('current_stock', 0) <= 5]
 
-    # Sort by stock descending (highest stock first), then by name
+    # Sort by stock descending, then by name
     filtered.sort(key=lambda x: (-x.get('current_stock', 0), (x.get('product_name') or '').lower()))
 
     # Summary stats (from full inventory, not filtered)
     total_all = len(full_inv)
     in_stock = sum(1 for p in full_inv if p.get('current_stock', 0) > 0)
-    low_stock = sum(1 for p in full_inv if 0 < p.get('current_stock', 0) <= 5)
+    low_stock_count = sum(1 for p in full_inv if 0 < p.get('current_stock', 0) <= 5)
     out_of_stock = sum(1 for p in full_inv if p.get('current_stock', 0) == 0)
 
     # Categories for filter dropdown
@@ -2084,11 +2086,10 @@ async def full_inventory(
         "summary": {
             "total": total_all,
             "in_stock": in_stock,
-            "low_stock": low_stock,
+            "low_stock": low_stock_count,
             "out_of_stock": out_of_stock,
         }
     }
-
 
 
 @app.get("/api/sales")
