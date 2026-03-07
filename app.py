@@ -1133,6 +1133,12 @@ def fetch_full_inventory() -> list:
             images = pdata.get('images', {})
             image_url = list(images.values())[0] if images else ''
 
+            # Extract Shopify variant IDs from links (shop_5017156 is Marbily Shopify)
+            product_links = pdata.get('links', {})
+            shopify_links = product_links.get('shop_5017156', {}) or {}
+            # shopify_links can map variant_id at product level or per-variant
+            parent_shopify_vid = str(shopify_links.get('variant_id', '')) if isinstance(shopify_links, dict) else ''
+
             # Check if this product has variants
             variants = pdata.get('variants', {})
             if variants:
@@ -1145,6 +1151,14 @@ def fetch_full_inventory() -> list:
                     v_image = list(v_images.values())[0] if v_images else image_url
                     # Variant display name: "Parent Name - Variant Name"
                     v_display = f"{name} - {v_name_raw}" if v_name_raw else name
+                    # Try variant-level Shopify link, fall back to parent
+                    v_shopify_vid = ''
+                    if isinstance(shopify_links, dict):
+                        v_links = shopify_links.get(vid, {})
+                        if isinstance(v_links, dict):
+                            v_shopify_vid = str(v_links.get('variant_id', ''))
+                    if not v_shopify_vid:
+                        v_shopify_vid = parent_shopify_vid
 
                     full_list.append({
                         'bl_product_id': vid,
@@ -1153,6 +1167,7 @@ def fetch_full_inventory() -> list:
                         'current_stock': v_stock,
                         'image_url': v_image,
                         'category': determine_category(name),
+                        'shopify_variant_id': v_shopify_vid,
                         'units_sold': 0,
                         'total_revenue': 0,
                         'sales_by_channel': {},
@@ -1167,6 +1182,7 @@ def fetch_full_inventory() -> list:
                     'current_stock': total_stock,
                     'image_url': image_url,
                     'category': determine_category(name),
+                    'shopify_variant_id': parent_shopify_vid,
                     'units_sold': 0,
                     'total_revenue': 0,
                     'sales_by_channel': {},
@@ -2030,13 +2046,21 @@ async def full_inventory(
 
     filtered = list(full_inv)
 
-    # Search filter
+    # Search filter — supports name, SKU, BL ID, Shopify variant ID, and Shopify URLs
     if q and len(q) >= 1:
-        query = q.lower()
-        filtered = [p for p in filtered if
-            query in (p.get('product_name') or '').lower()
-            or query in (p.get('sku') or '').lower()
-            or query in str(p.get('bl_product_id', ''))]
+        query = q.strip()
+        # Extract Shopify variant ID from pasted URLs like ?variant=12345
+        variant_match = re.search(r'[?&]variant=(\d+)', query)
+        if variant_match:
+            vid = variant_match.group(1)
+            filtered = [p for p in filtered if str(p.get('shopify_variant_id', '')) == vid]
+        else:
+            ql = query.lower()
+            filtered = [p for p in filtered if
+                ql in (p.get('product_name') or '').lower()
+                or ql in (p.get('sku') or '').lower()
+                or ql in str(p.get('bl_product_id', ''))
+                or ql in str(p.get('shopify_variant_id', ''))]
 
     # Category filter
     if category:

@@ -588,35 +588,40 @@
 
     <!-- Stocks View -->
     <div id="stocks-view" style="display:none;">
-        <div style="background:white;padding:12px 30px;border-bottom:1px solid #e0e0e0;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-            <div class="filter-group">
-                <label>Search</label>
-                <input type="text" id="stocks-search" placeholder="Search by name or SKU..." oninput="debounceStocksSearch()" style="min-width:280px;padding:8px 12px;border:1px solid #d0d0d0;border-radius:6px;font-size:13px;">
-            </div>
-            <div class="filter-group">
-                <label>Category</label>
-                <select id="stocks-category" onchange="loadStocksData()" style="padding:8px 12px;border:1px solid #d0d0d0;border-radius:6px;font-size:13px;min-width:180px;">
-                    <option value="">All Categories</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label>Stock Filter</label>
-                <select id="stocks-filter" onchange="loadStocksData()" style="padding:8px 12px;border:1px solid #d0d0d0;border-radius:6px;font-size:13px;min-width:160px;">
-                    <option value="">All</option>
-                    <option value="in_stock">In Stock</option>
-                    <option value="low_stock">Low Stock (1-5)</option>
-                    <option value="out_of_stock">Out of Stock</option>
-                </select>
-            </div>
-            <div style="margin-left:auto;">
-                <button class="btn btn-primary" onclick="toggleStocksView()" style="background:#4472C4;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-                    Back to Sales
-                </button>
-            </div>
+        <!-- Top bar: Back button only -->
+        <div style="background:white;padding:12px 30px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;">
+            <h2 style="font-size:20px;font-weight:700;color:#333;margin:0;">Inventory Stock Levels</h2>
+            <button class="btn btn-primary" onclick="toggleStocksView()" style="background:#4472C4;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                Back to Sales
+            </button>
         </div>
-        <!-- Stocks summary cards -->
+        <!-- Summary cards -->
         <div style="padding:15px 30px;display:flex;gap:12px;flex-wrap:wrap;" id="stocks-summary-cards">
+        </div>
+        <!-- Prominent search bar + filters below summary -->
+        <div style="padding:0 30px 15px 30px;">
+            <div style="background:white;padding:16px 20px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                <div style="flex:2;min-width:300px;">
+                    <label style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px;">Search</label>
+                    <input type="text" id="stocks-search" placeholder="Search by name, SKU, BL ID, or paste Shopify URL..." oninput="debounceStocksSearch()" style="width:100%;padding:12px 16px;border:2px solid #d0d0d0;border-radius:8px;font-size:15px;transition:border-color 0.2s;" onfocus="this.style.borderColor='#4472C4'" onblur="this.style.borderColor='#d0d0d0'">
+                </div>
+                <div style="min-width:160px;">
+                    <label style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px;">Category</label>
+                    <select id="stocks-category" onchange="loadStocksData()" style="width:100%;padding:10px 12px;border:1px solid #d0d0d0;border-radius:8px;font-size:14px;background:white;">
+                        <option value="">All Categories</option>
+                    </select>
+                </div>
+                <div style="min-width:150px;">
+                    <label style="font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px;">Stock Filter</label>
+                    <select id="stocks-filter" onchange="loadStocksData()" style="width:100%;padding:10px 12px;border:1px solid #d0d0d0;border-radius:8px;font-size:14px;background:white;">
+                        <option value="">All</option>
+                        <option value="in_stock">In Stock</option>
+                        <option value="low_stock">Low Stock (1-5)</option>
+                        <option value="out_of_stock">Out of Stock</option>
+                    </select>
+                </div>
+            </div>
         </div>
         <div class="container" id="stocks-content">
             <div class="loading">
@@ -2324,10 +2329,15 @@
                 const imageHtml = p.image_url
                     ? `<img src="${p.image_url}" class="product-image" alt="${escapeHtml(p.sku)}" onerror="imgError(this)">`
                     : '<div class="no-image">No img</div>';
+                const skuText = escapeHtml(p.sku || '-');
+                const blId = escapeHtml(p.bl_product_id || '-');
+                const shopifyVid = p.shopify_variant_id || '-';
                 rows += `<tr>
                     <td>${imageHtml}</td>
                     <td class="product-name" title="${escapeHtml(p.product_name)}">${escapeHtml(p.product_name)}</td>
-                    <td class="sku">${escapeHtml(p.sku || '-')}</td>
+                    <td class="sku" style="cursor:pointer;" title="Click to copy" onclick="navigator.clipboard.writeText('${skuText}');this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">${skuText}</td>
+                    <td style="font-size:12px;color:#555;font-family:monospace;cursor:pointer;" title="Click to copy BL ID" onclick="navigator.clipboard.writeText('${blId}');this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">${blId}</td>
+                    <td style="font-size:12px;color:#555;font-family:monospace;cursor:pointer;" title="Click to copy Shopify Variant ID" onclick="navigator.clipboard.writeText('${escapeHtml(shopifyVid)}');this.style.background='#d4edda';setTimeout(()=>this.style.background='',800)">${shopifyVid !== '-' ? escapeHtml(shopifyVid) : '<span style="color:#ccc;">—</span>'}</td>
                     <td><span class="category-badge">${escapeHtml(p.category || 'Other')}</span></td>
                     <td class="stock ${stockClass}" style="font-size:16px;font-weight:700;">${p.current_stock}</td>
                 </tr>`;
@@ -2341,6 +2351,8 @@
                                 <th style="width:70px">Image</th>
                                 <th>Product Name</th>
                                 <th>SKU</th>
+                                <th>BL ID</th>
+                                <th>Shopify Variant</th>
                                 <th>Category</th>
                                 <th style="text-align:center">Stock</th>
                             </tr>
