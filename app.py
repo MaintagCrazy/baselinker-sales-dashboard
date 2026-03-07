@@ -1091,7 +1091,7 @@ def get_inventory(product_ids: list) -> dict:
 
 def fetch_full_inventory() -> list:
     """Fetch ALL products and variants from BaseLinker inventory for search.
-    Returns a flat list of dicts with: bl_product_id, product_name, sku, current_stock, image_url, category.
+    Returns a flat list of dicts with: bl_product_id, product_name, sku, current_stock, image_url, category, shopify_variant_id.
     """
     # Step 1: Get all parent products
     all_parents = {}
@@ -1115,6 +1115,8 @@ def fetch_full_inventory() -> list:
     # Step 2: Get detailed data for all parents (includes variants via getInventoryProductsData)
     parent_ids = list(int(pid) for pid in all_parents.keys())
     full_list = []
+    # Collect Shopify product IDs to resolve variant IDs later
+    shopify_product_ids = []  # list of Shopify product_id strings
 
     for i in range(0, len(parent_ids), 100):
         batch = parent_ids[i:i+100]
@@ -1133,11 +1135,12 @@ def fetch_full_inventory() -> list:
             images = pdata.get('images', {})
             image_url = list(images.values())[0] if images else ''
 
-            # Extract Shopify variant IDs from links (shop_5017156 is Marbily Shopify)
+            # Get Shopify product ID from links
             product_links = pdata.get('links', {})
-            shopify_links = product_links.get('shop_5017156', {}) or {}
-            # shopify_links can map variant_id at product level or per-variant
-            parent_shopify_vid = str(shopify_links.get('variant_id', '')) if isinstance(shopify_links, dict) else ''
+            shopify_link = product_links.get('shop_5017156', {}) or {}
+            shopify_pid = str(shopify_link.get('product_id', '')) if isinstance(shopify_link, dict) else ''
+            if shopify_pid and shopify_pid != '0':
+                shopify_product_ids.append(shopify_pid)
 
             # Check if this product has variants
             variants = pdata.get('variants', {})
@@ -1149,16 +1152,7 @@ def fetch_full_inventory() -> list:
                     v_stock = sum(int(s) for s in v_stock_data.values() if s) if v_stock_data else total_stock
                     v_images = vdata.get('images', {})
                     v_image = list(v_images.values())[0] if v_images else image_url
-                    # Variant display name: "Parent Name - Variant Name"
                     v_display = f"{name} - {v_name_raw}" if v_name_raw else name
-                    # Try variant-level Shopify link, fall back to parent
-                    v_shopify_vid = ''
-                    if isinstance(shopify_links, dict):
-                        v_links = shopify_links.get(vid, {})
-                        if isinstance(v_links, dict):
-                            v_shopify_vid = str(v_links.get('variant_id', ''))
-                    if not v_shopify_vid:
-                        v_shopify_vid = parent_shopify_vid
 
                     full_list.append({
                         'bl_product_id': vid,
@@ -1167,14 +1161,13 @@ def fetch_full_inventory() -> list:
                         'current_stock': v_stock,
                         'image_url': v_image,
                         'category': determine_category(name),
-                        'shopify_variant_id': v_shopify_vid,
+                        'shopify_variant_id': '',  # filled in Step 3
                         'units_sold': 0,
                         'total_revenue': 0,
                         'sales_by_channel': {},
                         'purchase_orders': [],
                     })
             else:
-                # No variants — single product
                 full_list.append({
                     'bl_product_id': pid_str,
                     'product_name': name,
@@ -1182,7 +1175,7 @@ def fetch_full_inventory() -> list:
                     'current_stock': total_stock,
                     'image_url': image_url,
                     'category': determine_category(name),
-                    'shopify_variant_id': parent_shopify_vid,
+                    'shopify_variant_id': '',  # filled in Step 3
                     'units_sold': 0,
                     'total_revenue': 0,
                     'sales_by_channel': {},
@@ -1191,7 +1184,35 @@ def fetch_full_inventory() -> list:
 
         time.sleep(0.5)
 
-    print(f"Full inventory: {len(full_list)} products/variants indexed for search")
+    # Step 3: Resolve Shopify variant IDs by fetching external storage data and matching by SKU
+    # Build SKU -> full_list index for fast lookup
+    sku_to_items = defaultdict(list)
+    for item in full_list:
+        if item.get('sku'):
+            sku_to_items[item['sku']].append(item)
+
+    unique_shopify_pids = list(set(shopify_product_ids))
+    print(f"Resolving Shopify variant IDs for {len(unique_shopify_pids)} linked products...")
+    matched = 0
+    for i in range(0, len(unique_shopify_pids), 50):
+        batch = [int(pid) for pid in unique_shopify_pids[i:i+50]]
+        result = call_baselinker('getExternalStorageProductsData', {
+            'storage_id': 'shop_5017156',
+            'products': batch
+        })
+        if "error" in result:
+            continue
+        for spid_str, sdata in result.get('products', {}).items():
+            for sv in sdata.get('variants', []):
+                sv_sku = sv.get('sku', '')
+                sv_vid = str(sv.get('variant_id', ''))
+                if sv_sku and sv_vid and sv_sku in sku_to_items:
+                    for item in sku_to_items[sv_sku]:
+                        item['shopify_variant_id'] = sv_vid
+                        matched += 1
+        time.sleep(0.5)
+
+    print(f"Full inventory: {len(full_list)} products/variants indexed, {matched} Shopify variant IDs matched by SKU")
     return full_list
 
 
