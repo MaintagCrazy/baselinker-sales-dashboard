@@ -2009,6 +2009,87 @@ async def search_inventory(
 
     return {"products": matches[:50], "total": len(matches)}
 
+@app.get("/api/inventory/full")
+async def full_inventory(
+    q: str = Query("", description="Search query"),
+    category: str = Query("", description="Category filter"),
+    stock_filter: str = Query("", description="in_stock, out_of_stock, low_stock"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    user: dict = Depends(get_current_user)
+):
+    """Full inventory list with search, filters, and pagination.
+    Shows ALL products with stock levels - no sales data required.
+    """
+    full_inv = cache.get("full_inventory", [])
+    if not full_inv:
+        return {"products": [], "total": 0, "page": 1, "pages": 1,
+                "summary": {"total": 0, "in_stock": 0, "low_stock": 0, "out_of_stock": 0}}
+
+    filtered = full_inv
+
+    # Search filter
+    if q and len(q) >= 1:
+        query = q.lower()
+        filtered = [p for p in filtered if
+            query in (p.get('product_name') or '').lower()
+            or query in (p.get('sku') or '').lower()
+            or query in str(p.get('bl_product_id', ''))]
+
+    # Category filter
+    if category:
+        filtered = [p for p in filtered if p.get('category') == category]
+
+    # Stock filter
+    if stock_filter == 'in_stock':
+        filtered = [p for p in filtered if p.get('current_stock', 0) > 0]
+    elif stock_filter == 'out_of_stock':
+        filtered = [p for p in filtered if p.get('current_stock', 0) == 0]
+    elif stock_filter == 'low_stock':
+        filtered = [p for p in filtered if 0 < p.get('current_stock', 0) <= 5]
+
+    # Sort by stock descending (highest stock first), then by name
+    filtered.sort(key=lambda x: (-x.get('current_stock', 0), (x.get('product_name') or '').lower()))
+
+    # Summary stats (from full inventory, not filtered)
+    total_all = len(full_inv)
+    in_stock = sum(1 for p in full_inv if p.get('current_stock', 0) > 0)
+    low_stock = sum(1 for p in full_inv if 0 < p.get('current_stock', 0) <= 5)
+    out_of_stock = sum(1 for p in full_inv if p.get('current_stock', 0) == 0)
+
+    # Categories for filter dropdown
+    categories = sorted(set(p.get('category', 'Other') for p in full_inv))
+
+    # Paginate
+    total = len(filtered)
+    pages = max(1, (total + per_page - 1) // per_page)
+    start = (page - 1) * per_page
+    page_items = filtered[start:start + per_page]
+
+    # Strip sensitive data for stock_only users
+    is_stock_only = user.get("role") in ("stock_only", "viewer")
+    if is_stock_only:
+        for p in page_items:
+            p.pop('unit_cost', None)
+            p.pop('cost_match', None)
+            p.pop('total_revenue', None)
+            p.pop('units_sold', None)
+
+    return {
+        "products": page_items,
+        "total": total,
+        "page": page,
+        "pages": pages,
+        "categories": categories,
+        "summary": {
+            "total": total_all,
+            "in_stock": in_stock,
+            "low_stock": low_stock,
+            "out_of_stock": out_of_stock,
+        }
+    }
+
+
 
 @app.get("/api/sales")
 async def get_sales(
