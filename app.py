@@ -1344,12 +1344,19 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
     for variant_key, data in sales_data.items():
         bl_pid = data['bl_product_id']
         inv_info = inventory.get(bl_pid, {})
-        # Fallback: if no inventory data OR stock is zero/negative, try SKU match
-        # Catalog duplicates often have stale/negative stock; real inventory has correct stock
-        if data['sku'] and (not inv_info or inv_info.get('stock', 0) <= 0):
+        # Fallback: if stock is zero/negative, get ONLY the stock from the real inventory
+        # product (matched by SKU). Keep the original image from the catalog product —
+        # catalog products have the correct product-specific images.
+        if data['sku'] and inv_info.get('stock', 0) <= 0:
             sku_fallback = _sku_inv_fallback.get(data['sku'], {})
-            if sku_fallback.get('stock', 0) > inv_info.get('stock', 0):
-                inv_info = sku_fallback
+            if sku_fallback.get('stock', 0) > 0:
+                inv_info = {
+                    'stock': sku_fallback['stock'],
+                    'image_url': inv_info.get('image_url') or sku_fallback.get('image_url', ''),
+                    'shopify_variant_id': inv_info.get('shopify_variant_id') or sku_fallback.get('shopify_variant_id', ''),
+                }
+        elif not inv_info and data['sku']:
+            inv_info = _sku_inv_fallback.get(data['sku'], {})
         revenue = round(data['total_revenue'], 2)
         total_revenue += revenue
         # Match POs by BaseLinker Variant ID — exact numeric match from import sheet column B
@@ -1544,7 +1551,14 @@ def refresh_data():
                 'shopify_variant_id': item.get('shopify_variant_id', ''),
             }
             if vid:
-                inventory[vid] = inv_entry
+                # If this vid already exists, keep the entry with a real image
+                # (variants inherit parent images which may be wrong for the specific variant)
+                existing_inv = inventory.get(vid)
+                if not existing_inv or (inv_entry['image_url'] and inv_entry['stock'] >= existing_inv.get('stock', 0)):
+                    inventory[vid] = inv_entry
+                elif inv_entry['stock'] > existing_inv.get('stock', 0):
+                    # Better stock but maybe worse image — only update stock
+                    existing_inv['stock'] = inv_entry['stock']
             sku = item.get('sku', '')
             if sku:
                 # Keep the entry with highest stock — catalog duplicates often show
@@ -1567,8 +1581,14 @@ def refresh_data():
             if bl_pid and sku and sku in sku_to_inv:
                 existing = inventory.get(bl_pid)
                 sku_entry = sku_to_inv[sku]
-                if not existing or (existing.get('stock', 0) <= 0 and sku_entry.get('stock', 0) > 0):
+                if not existing:
                     inventory[bl_pid] = sku_entry
+                    sku_matched += 1
+                elif existing.get('stock', 0) <= 0 and sku_entry.get('stock', 0) > 0:
+                    # Only override stock, keep original image from catalog product
+                    existing['stock'] = sku_entry['stock']
+                    if not existing.get('shopify_variant_id'):
+                        existing['shopify_variant_id'] = sku_entry.get('shopify_variant_id', '')
                     sku_matched += 1
         if sku_matched:
             logger.info(f"Inventory SKU-matched: {sku_matched} catalog variant IDs linked to inventory via SKU")
