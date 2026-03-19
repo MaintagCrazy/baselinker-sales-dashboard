@@ -1327,22 +1327,29 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
     global_channel_revenue = defaultdict(float)
 
     # Build SKU fallback index from full_inventory cache
+    # Keep the entry with highest stock per SKU (catalog duplicates have stale/negative stock)
     _sku_inv_fallback = {}
     for item in cache.get("full_inventory", []):
         sku = item.get('sku', '')
         if sku:
-            _sku_inv_fallback[sku] = {
+            entry = {
                 'stock': item.get('current_stock', 0),
                 'image_url': item.get('image_url', ''),
                 'shopify_variant_id': item.get('shopify_variant_id', ''),
             }
+            existing = _sku_inv_fallback.get(sku)
+            if not existing or entry['stock'] > existing['stock']:
+                _sku_inv_fallback[sku] = entry
 
     for variant_key, data in sales_data.items():
         bl_pid = data['bl_product_id']
         inv_info = inventory.get(bl_pid, {})
-        # Fallback: if catalog variant ID not in inventory, try SKU match
-        if not inv_info and data['sku']:
-            inv_info = _sku_inv_fallback.get(data['sku'], {})
+        # Fallback: if no inventory data OR stock is zero/negative, try SKU match
+        # Catalog duplicates often have stale/negative stock; real inventory has correct stock
+        if data['sku'] and (not inv_info or inv_info.get('stock', 0) <= 0):
+            sku_fallback = _sku_inv_fallback.get(data['sku'], {})
+            if sku_fallback.get('stock', 0) > inv_info.get('stock', 0):
+                inv_info = sku_fallback
         revenue = round(data['total_revenue'], 2)
         total_revenue += revenue
         # Match POs by BaseLinker Variant ID — exact numeric match from import sheet column B
@@ -1540,7 +1547,11 @@ def refresh_data():
                 inventory[vid] = inv_entry
             sku = item.get('sku', '')
             if sku:
-                sku_to_inv[sku] = inv_entry
+                # Keep the entry with highest stock — catalog duplicates often show
+                # negative/stale stock while the real inventory product has correct stock
+                existing = sku_to_inv.get(sku)
+                if not existing or inv_entry['stock'] > existing['stock']:
+                    sku_to_inv[sku] = inv_entry
 
         logger.info(f"Inventory indexed: {len(inventory)} by variant ID, {len(sku_to_inv)} by SKU")
 
@@ -1552,10 +1563,13 @@ def refresh_data():
         for variant_key, data in sales_data.items():
             bl_pid = data['bl_product_id']
             sku = data['sku']
-            # If this catalog variant_id is not in inventory, try matching by SKU
-            if bl_pid and bl_pid not in inventory and sku and sku in sku_to_inv:
-                inventory[bl_pid] = sku_to_inv[sku]
-                sku_matched += 1
+            # If catalog variant_id not in inventory OR has bad stock, use SKU match
+            if bl_pid and sku and sku in sku_to_inv:
+                existing = inventory.get(bl_pid)
+                sku_entry = sku_to_inv[sku]
+                if not existing or (existing.get('stock', 0) <= 0 and sku_entry.get('stock', 0) > 0):
+                    inventory[bl_pid] = sku_entry
+                    sku_matched += 1
         if sku_matched:
             logger.info(f"Inventory SKU-matched: {sku_matched} catalog variant IDs linked to inventory via SKU")
 
