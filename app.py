@@ -1177,7 +1177,7 @@ def fetch_full_inventory() -> list:
             name = pdata.get('text_fields', {}).get('name', '') or all_parents.get(pid_str, {}).get('name', '')
             sku = pdata.get('text_fields', {}).get('sku', '') or all_parents.get(pid_str, {}).get('sku', '')
             stock_data = pdata.get('stock', {})
-            total_stock = sum(int(s) for s in stock_data.values() if s)
+            total_stock = sum(int(s) for s in stock_data.values() if s is not None)
             images = pdata.get('images', {})
             image_url = list(images.values())[0] if images else ''
 
@@ -1195,7 +1195,7 @@ def fetch_full_inventory() -> list:
                     v_name_raw = vdata.get('name', '')
                     v_sku = vdata.get('sku', '') or sku
                     v_stock_data = vdata.get('stock', {})
-                    v_stock = sum(int(s) for s in v_stock_data.values() if s) if v_stock_data is not None else total_stock
+                    v_stock = sum(int(s) for s in v_stock_data.values() if s is not None) if v_stock_data is not None else total_stock
                     v_images = vdata.get('images', {})
                     v_image = list(v_images.values())[0] if v_images else image_url
                     v_display = f"{name} - {v_name_raw}" if v_name_raw else name
@@ -1598,7 +1598,7 @@ async def pin_login(req: PinLoginRequest, request: Request):
     try:
         ip = get_client_ip(request)
 
-        # Rate limit: 5 attempts per IP in 5 minutes
+        # Rate limit: 5 attempts per IP in 5 minutes — fail-closed on DB error
         try:
             cur = conn.cursor()
             cur.execute("""
@@ -1613,6 +1613,7 @@ async def pin_login(req: PinLoginRequest, request: Request):
         except Exception:
             try: conn.rollback()
             except Exception: pass
+            raise HTTPException(status_code=503, detail="Rate limit check unavailable")
 
         # Find users with PINs
         try:
@@ -1642,19 +1643,6 @@ async def pin_login(req: PinLoginRequest, request: Request):
             except Exception: pass
 
         if not matched_user:
-            # Check if this was the 3rd failure
-            try:
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT COUNT(*) FROM pin_attempts
-                    WHERE ip_address = %s AND attempted_at > NOW() - INTERVAL '5 minutes' AND NOT success
-                """, (ip,))
-                fail_count = cur.fetchone()[0]
-                cur.close()
-                if fail_count >= 5:
-                    return {"success": False, "fallback": "email_password", "message": "Too many attempts. Use email and password."}
-            except Exception:
-                pass
             return {"success": False, "message": "Invalid PIN"}
 
         if matched_user[5]:  # is_banned
@@ -2418,7 +2406,7 @@ async def get_sales(
     for order in raw_orders:
         order_ts = order.get("date_add", 0)
         order_status = order.get("order_status_id") if order.get("order_status_id") is not None else order.get("status_id")
-        if order_status in EXCLUDED_STATUS_IDS:
+        if order_status not in FINANCIAL_STATUS_IDS:
             continue
         if isinstance(order_ts, (int, float)) and ts_from <= order_ts < ts_to:
             filtered_orders.append(order)
