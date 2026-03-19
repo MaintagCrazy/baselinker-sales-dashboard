@@ -1593,6 +1593,31 @@ def refresh_data():
         if sku_matched:
             logger.info(f"Inventory SKU-matched: {sku_matched} catalog variant IDs linked to inventory via SKU")
 
+        # Fetch images for order product_ids directly from BaseLinker API.
+        # The catalog variant_ids from orders return their own correct images when
+        # queried as standalone products. full_inventory may return parent images instead.
+        unique_pids = list(set(int(pid) for pid in product_ids if pid))
+        img_fixed = 0
+        for i in range(0, len(unique_pids), 100):
+            batch = unique_pids[i:i+100]
+            try:
+                result = call_baselinker('getInventoryProductsData', {
+                    'inventory_id': BASELINKER_INVENTORY_ID,
+                    'products': batch
+                })
+                for pid_str, product_info in result.get('products', {}).items():
+                    images = product_info.get('images', {})
+                    if images and pid_str in inventory:
+                        real_img = list(images.values())[0]
+                        if inventory[pid_str].get('image_url') != real_img:
+                            inventory[pid_str]['image_url'] = real_img
+                            img_fixed += 1
+                time.sleep(0.5)
+            except Exception:
+                pass
+        if img_fixed:
+            logger.info(f"Images corrected: {img_fixed} product images updated from direct API lookup")
+
         cache["inventory"] = inventory
 
         # PO items map for build_response (keyed by BaseLinker Variant ID)
