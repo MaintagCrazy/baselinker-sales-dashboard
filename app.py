@@ -16,9 +16,14 @@ import uuid
 import secrets
 import jwt
 import bcrypt
+import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import defaultdict
+from enum import Enum
+
+logger = logging.getLogger("sales-dashboard")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # User is in Poland — all date filtering must use Polish timezone
 POLISH_TZ = ZoneInfo("Europe/Warsaw")
@@ -51,13 +56,15 @@ FALLBACK_MARKUP_GROSS = 3.444  # cost = gross_price / 3.444 (2.8x net markup + 2
 # JWT Configuration
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
-    print("WARNING: JWT_SECRET not set — generating ephemeral secret. Sessions won't survive restarts.")
-    JWT_SECRET = secrets.token_hex(32)
+    import sys
+    print("FATAL: JWT_SECRET environment variable is not set. Exiting.", file=sys.stderr)
+    sys.exit(1)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 72
 security = HTTPBearer(auto_error=False)
 
 # Currency conversion — BaseLinker returns price_brutto in the ORDER's currency
+EXCHANGE_RATES_AS_OF = "2024-01-01"
 EXCHANGE_RATES_TO_PLN = {
     'PLN': 1.0,
     'EUR': 4.30,
@@ -84,7 +91,7 @@ def convert_to_pln(amount: float, currency: str) -> float:
     rate = EXCHANGE_RATES_TO_PLN.get(currency.upper())
     if rate:
         return amount * rate
-    print(f"Unknown currency '{currency}' — treating as PLN")
+    logger.warning(f"Unknown currency '{currency}' — treating as PLN")
     return amount
 
 # Data cache
@@ -117,9 +124,9 @@ def init_db_pool():
     try:
         from psycopg2.pool import ThreadedConnectionPool
         db_pool = ThreadedConnectionPool(2, 10, DATABASE_URL)
-        print("Database connection pool initialized (min=2, max=10)")
+        logger.info("Database connection pool initialized (min=2, max=10)")
     except Exception as e:
-        print(f"Database pool initialization error: {e}")
+        logger.error(f"Database pool initialization error: {e}")
         db_pool = None
 
 
@@ -132,7 +139,7 @@ def get_db_connection():
         conn.autocommit = False
         return conn
     except Exception as e:
-        print(f"Database connection error: {e}")
+        logger.error(f"Database connection error: {e}")
         return None
 
 
@@ -265,10 +272,15 @@ def init_database():
         """, ('glamova.hdht@gmail.com', 'Admin', pin_hash, 'admin'))
         conn.commit()
         cur.close()
-        print("Database tables initialized")
+        logger.info("Database tables initialized")
     except Exception as e:
-        print(f"Database init error: {e}")
+        logger.error(f"Database init error: {e}")
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 
@@ -306,16 +318,21 @@ def save_orders_to_db(orders: list):
             saved += 1
         conn.commit()
         cur.close()
-        print(f"Saved {saved} orders to database")
+        logger.info(f"Saved {saved} orders to database")
         return saved
     except Exception as e:
-        print(f"Error saving orders to DB: {e}")
+        logger.error(f"Error saving orders to DB: {e}")
         try:
             conn.rollback()
         except Exception:
             pass
         return 0
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 
@@ -327,22 +344,27 @@ def load_orders_from_db(min_date_add: int = 0) -> list:
     if not conn:
         return []
     try:
-        cur = conn.cursor()
+        cur = conn.cursor('orders_server_cursor')
         cur.execute("SELECT order_data FROM bl_orders WHERE date_add >= %s ORDER BY date_add DESC", (min_date_add,))
-        rows = cur.fetchall()
-        cur.close()
         orders = []
-        for row in rows:
-            data = row[0]
-            if isinstance(data, str):
-                data = json.loads(data)
-            orders.append(data)
-        print(f"Loaded {len(orders)} orders from database")
+        while True:
+            batch = cur.fetchmany(500)
+            if not batch:
+                break
+            for row in batch:
+                orders.append(json.loads(row[0]) if isinstance(row[0], str) else row[0])
+        cur.close()
+        logger.info(f"Loaded {len(orders)} orders from database")
         return orders
     except Exception as e:
-        print(f"Error loading orders from DB: {e}")
+        logger.error(f"Error loading orders from DB: {e}")
         return []
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 
@@ -360,6 +382,11 @@ def get_db_order_count() -> int:
     except Exception:
         return 0
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 
@@ -383,8 +410,13 @@ def log_activity(action: str, data: dict = None):
         conn.commit()
         cur.close()
     except Exception as e:
-        print(f"Log activity error: {e}")
+        logger.error(f"Log activity error: {e}")
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 
@@ -395,6 +427,7 @@ def save_sales_snapshot(products: list):
         return
     try:
         cur = conn.cursor()
+        cur.execute("DELETE FROM sales_snapshot WHERE timestamp < NOW() - INTERVAL '90 days'")
         sorted_products = sorted(products, key=lambda x: x.get('units_sold', 0), reverse=True)
         for p in sorted_products[:50]:
             cur.execute("""
@@ -404,8 +437,13 @@ def save_sales_snapshot(products: list):
         conn.commit()
         cur.close()
     except Exception as e:
-        print(f"Save snapshot error: {e}")
+        logger.error(f"Save snapshot error: {e}")
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 
@@ -451,10 +489,15 @@ def create_session(user_id: int, request: Request) -> str:
             conn.commit()
             cur.close()
         except Exception as e:
-            print(f"Session creation error: {e}")
+            logger.error(f"Session creation error: {e}")
             try: conn.rollback()
             except Exception: pass
         finally:
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             put_db_connection(conn)
     return token
 
@@ -507,6 +550,11 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
         except Exception: pass
         raise HTTPException(status_code=500, detail=f"Auth error: {e}")
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 async def require_admin(user: dict = Depends(get_current_user)):
@@ -527,8 +575,13 @@ def log_user_activity(user_id: int, jti: str, action: str, details: dict = None)
         conn.commit()
         cur.close()
     except Exception as e:
-        print(f"Activity log error: {e}")
+        logger.error(f"Activity log error: {e}")
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 
@@ -553,7 +606,11 @@ class TempPasswordRequest(BaseModel):
     temp_password: str
     new_password: str
 
-VALID_ROLES = {"admin", "full_access", "stock_only"}
+class UserRole(str, Enum):
+    admin = "admin"
+    full_access = "full_access"
+    stock_only = "stock_only"
+VALID_ROLES = {r.value for r in UserRole}
 
 class CreateUserRequest(BaseModel):
     email: str
@@ -646,7 +703,7 @@ def load_costs_and_pos_from_import_sheet():
     po_items_by_bl_id = {}  # BaseLinker Variant ID -> [PO references]
 
     if not GOOGLE_CREDENTIALS_JSON:
-        print("GOOGLE_CREDENTIALS_JSON not configured, skipping cost loading")
+        logger.warning("GOOGLE_CREDENTIALS_JSON not configured, skipping cost loading")
         return costs_by_sku, costs_by_base_sku, po_list, po_items_by_bl_id
 
     try:
@@ -786,13 +843,13 @@ def load_costs_and_pos_from_import_sheet():
             if count > 0:
                 po_entry['total_cost'] = round(po_entry['total_cost'], 2)
                 po_list.append(po_entry)
-                print(f"  Sheet '{tab_name}': {count} items, {po_entry['total_quantity']} units, {po_entry['total_cost']} PLN")
+                logger.info(f"  Sheet '{tab_name}': {count} items, {po_entry['total_quantity']} units, {po_entry['total_cost']} PLN")
 
-        print(f"Total costs loaded: {len(costs_by_sku)} SKU, {len(costs_by_base_sku)} base SKU")
-        print(f"Total import POs: {len(po_list)} invoices, {len(po_items_by_bl_id)} BL variant ID mappings")
+        logger.info(f"Total costs loaded: {len(costs_by_sku)} SKU, {len(costs_by_base_sku)} base SKU")
+        logger.info(f"Total import POs: {len(po_list)} invoices, {len(po_items_by_bl_id)} BL variant ID mappings")
 
     except Exception as e:
-        print(f"Error loading costs/POs from sheets: {e}")
+        logger.error(f"Error loading costs/POs from sheets: {e}")
         import traceback
         traceback.print_exc()
 
@@ -874,10 +931,10 @@ def fetch_all_financial_orders() -> list:
     all_orders = {}
     for status_id in FINANCIAL_STATUS_IDS:
         status_orders = fetch_orders_by_status(status_id)
-        print(f"Fetched {len(status_orders)} orders for status {status_id}")
+        logger.info(f"Fetched {len(status_orders)} orders for status {status_id}")
         for o in status_orders:
             all_orders[o['order_id']] = o  # deduplicate by order_id
-    print(f"Total financial orders (Wysłane + Spakowane): {len(all_orders)}")
+    logger.info(f"Total financial orders (Wysłane + Spakowane): {len(all_orders)}")
     return list(all_orders.values())
 
 
@@ -902,7 +959,7 @@ def fetch_recent_orders_all_statuses(days: int = 90) -> list:
 
         result = call_baselinker('getOrders', params)
         if "error" in result:
-            print(f"Error fetching all-status orders: {result.get('error')}")
+            logger.error(f"Error fetching all-status orders: {result.get('error')}")
             break
 
         fetched = result.get('orders', [])
@@ -916,7 +973,7 @@ def fetch_recent_orders_all_statuses(days: int = 90) -> list:
         if len(fetched) < 100:
             break
 
-    print(f"Fetched {len(all_orders)} orders from all statuses (last {days} days)")
+    logger.info(f"Fetched {len(all_orders)} orders from all statuses (last {days} days)")
     return all_orders
 
 
@@ -928,7 +985,7 @@ def fetch_order_sources() -> dict:
     """
     result = call_baselinker('getOrderSources')
     if "error" in result:
-        print(f"Error fetching order sources: {result.get('error')}")
+        logger.error(f"Error fetching order sources: {result.get('error')}, raw response: {result}")
         return {}
 
     source_names = {}
@@ -959,7 +1016,7 @@ def fetch_order_sources() -> dict:
                 else:
                     source_names[str(acc_id)] = f"{type_label} - {name}" if name != type_label else name
 
-    print(f"Parsed order sources: {source_names}")
+    logger.info(f"Parsed order sources: {source_names}")
     return source_names
 
 
@@ -969,8 +1026,6 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
     Includes outlier detection: if a variant has 3+ price instances and one
     price is >10x the median, it's excluded from revenue (Allegro sometimes
     reports order totals as per-unit price).
-
-    Payment filter: only include COD or paid orders.
     """
     sales_by_variant = defaultdict(lambda: {
         'product_name': '',
@@ -1063,7 +1118,7 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
                 clean_units = sum(inst['qty'] for inst in instances if inst['price'] <= median_price * 10)
                 if clean_revenue != val['total_revenue']:
                     excluded = val['total_revenue'] - clean_revenue
-                    print(f"Outlier detected for {key}: excluded {excluded:.2f} PLN "
+                    logger.warning(f"Outlier detected for {key}: excluded {excluded:.2f} PLN "
                           f"(median={median_price:.2f}, threshold={median_price*10:.2f})")
                     val['total_revenue'] = clean_revenue
                     val['units_sold'] = max(0, clean_units)
@@ -1078,47 +1133,6 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
     return result
 
 
-def get_inventory(product_ids: list) -> dict:
-    """Fetch current inventory for products, including Shopify variant IDs"""
-    if not product_ids:
-        return {}
-
-    unique_ids = list(set(int(pid) for pid in product_ids if pid))
-    inventory = {}
-
-    for i in range(0, len(unique_ids), 100):
-        batch = unique_ids[i:i+100]
-
-        result = call_baselinker('getInventoryProductsData', {
-            'inventory_id': BASELINKER_INVENTORY_ID,
-            'products': batch
-        })
-
-        if "error" in result:
-            continue
-
-        products_data = result.get('products', {})
-
-        for pid_str, product_info in products_data.items():
-            stock_data = product_info.get('stock', {})
-            total_stock = sum(int(s) for s in stock_data.values() if s)
-
-            images = product_info.get('images', {})
-            image_url = list(images.values())[0] if images else None
-
-            # Extract Shopify variant ID from links
-            links = product_info.get('links', {}).get('shop_5017156', {})
-            shopify_variant_id = str(links.get('variant_id', ''))
-
-            inventory[pid_str] = {
-                'stock': total_stock,
-                'image_url': image_url,
-                'shopify_variant_id': shopify_variant_id
-            }
-
-        time.sleep(0.5)
-
-    return inventory
 
 
 def fetch_full_inventory() -> list:
@@ -1142,7 +1156,7 @@ def fetch_full_inventory() -> list:
         page += 1
         time.sleep(0.3)
 
-    print(f"Inventory: {len(all_parents)} parent products found")
+    logger.info(f"Inventory: {len(all_parents)} parent products found")
 
     # Step 2: Get detailed data for all parents (includes variants via getInventoryProductsData)
     parent_ids = list(int(pid) for pid in all_parents.keys())
@@ -1224,7 +1238,7 @@ def fetch_full_inventory() -> list:
             sku_to_items[item['sku']].append(item)
 
     unique_shopify_pids = list(set(shopify_product_ids))
-    print(f"Resolving Shopify variant IDs for {len(unique_shopify_pids)} linked products...")
+    logger.info(f"Resolving Shopify variant IDs for {len(unique_shopify_pids)} linked products...")
     matched = 0
     for i in range(0, len(unique_shopify_pids), 50):
         batch = [int(pid) for pid in unique_shopify_pids[i:i+50]]
@@ -1240,11 +1254,13 @@ def fetch_full_inventory() -> list:
                 sv_vid = str(sv.get('variant_id', ''))
                 if sv_sku and sv_vid and sv_sku in sku_to_items:
                     for item in sku_to_items[sv_sku]:
-                        item['shopify_variant_id'] = sv_vid
-                        matched += 1
+                        if not item.get('shopify_variant_id'):  # only assign if not already set
+                            item['shopify_variant_id'] = sv_vid
+                            matched += 1
+                            break  # one Shopify variant per SKU match
         time.sleep(0.5)
 
-    print(f"Full inventory: {len(full_list)} products/variants indexed, {matched} Shopify variant IDs matched by SKU")
+    logger.info(f"Full inventory: {len(full_list)} products/variants indexed, {matched} Shopify variant IDs matched by SKU")
     return full_list
 
 
@@ -1371,6 +1387,7 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
         "profit": profit,
         "profit_margin": profit_margin,
         "channel_breakdown": channel_breakdown,
+        "exchange_rates_as_of": EXCHANGE_RATES_AS_OF,
         "products": products
     }
 
@@ -1393,12 +1410,12 @@ def refresh_data():
         po_list = []
         po_items_by_bl_id = {}
         try:
-            print("Loading costs and purchase orders from import sheets...")
+            logger.info("Loading costs and purchase orders from import sheets...")
             costs_by_sku, costs_by_base_sku, po_list, po_items_by_bl_id = load_costs_and_pos_from_import_sheet()
             cache["costs"] = (costs_by_sku, costs_by_base_sku)
             cache["po_items_by_bl_id"] = po_items_by_bl_id
         except Exception as e:
-            print(f"WARNING: Cost/PO loading failed (orders will still load): {e}")
+            logger.warning(f"Cost/PO loading failed (orders will still load): {e}")
             import traceback
             traceback.print_exc()
 
@@ -1431,7 +1448,7 @@ def refresh_data():
 
         db_order_count = get_db_order_count()
         api_order_count = len(orders)
-        print(f"Orders: {api_order_count} from API, {db_order_count} in DB, {len(orders_merged)} merged for All Time view")
+        logger.info(f"Orders: {api_order_count} from API, {db_order_count} in DB, {len(orders_merged)} merged for All Time view")
 
         # Cache raw orders — merged includes DB historical
         cache["raw_orders"] = orders_merged
@@ -1448,7 +1465,9 @@ def refresh_data():
                 if vid and vid != '0':
                     product_ids.add(vid)
 
-        inventory = get_inventory(list(product_ids))
+        inventory = {}
+        # Build from full_inventory (has correct variant-level stock)
+        # get_inventory was removed — it passed variant IDs to an API expecting parent IDs
 
         # Cache inventory for reuse
         cache["inventory"] = inventory
@@ -1458,7 +1477,7 @@ def refresh_data():
             full_inv = fetch_full_inventory()
             cache["full_inventory"] = full_inv
         except Exception as e:
-            print(f"WARNING: Full inventory fetch failed (search may be limited): {e}")
+            logger.warning(f"Full inventory fetch failed (search may be limited): {e}")
 
         # Enrich inventory with variant-level stock from full_inventory.
         # get_inventory() only works for parent product IDs, but orders reference
@@ -1476,7 +1495,7 @@ def refresh_data():
                 }
                 enriched += 1
         if enriched:
-            print(f"Inventory enriched: {enriched} variant-level stock entries added from full inventory")
+            logger.info(f"Inventory enriched: {enriched} variant-level stock entries added from full inventory")
 
         # Also update existing entries that have stock=0 with full_inventory data
         # (parent ID was found but returned aggregate stock instead of variant stock)
@@ -1489,7 +1508,7 @@ def refresh_data():
                     inv_data['stock'] = real_stock
                     corrected += 1
         if corrected:
-            print(f"Inventory corrected: {corrected} entries updated with real variant stock")
+            logger.info(f"Inventory corrected: {corrected} entries updated with real variant stock")
 
         cache["inventory"] = inventory
 
@@ -1510,7 +1529,7 @@ def refresh_data():
         save_sales_snapshot(response_data["products"])
 
     except Exception as e:
-        print(f"Error refreshing data: {e}")
+        logger.error(f"Error refreshing data: {e}")
         import traceback
         traceback.print_exc()
         log_activity("error", {"message": str(e)})
@@ -1531,9 +1550,9 @@ async def background_refresh_task():
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
     if not BASELINKER_API_KEY:
-        print("CRITICAL: BASELINKER_API_KEY not set!")
+        logger.error("CRITICAL: BASELINKER_API_KEY not set!")
     if not DATABASE_URL:
-        print("CRITICAL: DATABASE_URL not set!")
+        logger.error("CRITICAL: DATABASE_URL not set!")
     init_db_pool()
     init_database()
     log_activity("startup")
@@ -1641,6 +1660,16 @@ async def pin_login(req: PinLoginRequest, request: Request):
         if matched_user[5]:  # is_banned
             return {"success": False, "message": "Account is banned"}
 
+        # Clear failed attempts on successful login
+        try:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM pin_attempts WHERE ip_address = %s", (ip,))
+            conn.commit()
+            cur.close()
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
+
         token = create_session(matched_user[0], request)
         log_user_activity(matched_user[0], "", "pin_login", {"ip": ip})
 
@@ -1656,6 +1685,11 @@ async def pin_login(req: PinLoginRequest, request: Request):
             }
         }
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.post("/api/auth/login")
@@ -1698,6 +1732,11 @@ async def email_login(req: EmailLoginRequest, request: Request):
             }
         }
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.post("/api/auth/set-password")
@@ -1720,6 +1759,11 @@ async def set_password(req: SetPasswordRequest, user: dict = Depends(get_current
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.post("/api/auth/reset-request")
@@ -1744,6 +1788,11 @@ async def request_reset(req: ResetRequestModel):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.post("/api/auth/use-temp-password")
@@ -1787,6 +1836,11 @@ async def use_temp_password(req: TempPasswordRequest, request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.post("/api/auth/logout")
@@ -1801,6 +1855,11 @@ async def logout(user: dict = Depends(get_current_user)):
         except Exception:
             pass
         finally:
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             put_db_connection(conn)
     log_user_activity(user["id"], user.get("jti", ""), "logout", {})
     return {"success": True}
@@ -1821,6 +1880,11 @@ async def heartbeat(user: dict = Depends(get_current_user)):
         except Exception:
             pass
         finally:
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             put_db_connection(conn)
     return {"ok": True}
 
@@ -1841,6 +1905,11 @@ async def admin_list_users(user: dict = Depends(require_admin)):
     except Exception as e:
         return {"error": str(e), "users": []}
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.post("/api/admin/users")
@@ -1865,6 +1934,11 @@ async def admin_create_user(req: CreateUserRequest, user: dict = Depends(require
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.put("/api/admin/users/{user_id}")
@@ -1901,6 +1975,11 @@ async def admin_update_user(user_id: int, req: UpdateUserRequest, user: dict = D
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.delete("/api/admin/users/{user_id}")
@@ -1920,6 +1999,11 @@ async def admin_delete_user(user_id: int, user: dict = Depends(require_admin)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.get("/api/admin/sessions")
@@ -1943,6 +2027,11 @@ async def admin_sessions(user: dict = Depends(require_admin)):
     except Exception as e:
         return {"error": str(e), "sessions": []}
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.get("/api/admin/screen-time")
@@ -1955,11 +2044,11 @@ async def admin_screen_time(user: dict = Depends(require_admin)):
         cur.execute("""
             SELECT u.email, u.display_name,
                    DATE(s.created_at AT TIME ZONE 'Europe/Warsaw') as session_date,
-                   SUM(EXTRACT(EPOCH FROM (s.last_heartbeat - s.created_at)) / 60) as minutes
+                   SUM(LEAST(EXTRACT(EPOCH FROM (s.last_heartbeat - s.created_at)), 86400) / 60) as minutes
             FROM user_sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.last_heartbeat > s.created_at
-            GROUP BY u.email, u.display_name, DATE(s.created_at)
+            GROUP BY u.email, u.display_name, DATE(s.created_at AT TIME ZONE 'Europe/Warsaw')
             ORDER BY session_date DESC, minutes DESC
             LIMIT 100
         """)
@@ -1969,6 +2058,11 @@ async def admin_screen_time(user: dict = Depends(require_admin)):
     except Exception as e:
         return {"error": str(e), "screen_time": []}
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.get("/api/admin/search-history")
@@ -1992,6 +2086,11 @@ async def admin_search_history(user: dict = Depends(require_admin)):
     except Exception as e:
         return {"error": str(e), "searches": []}
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.get("/api/admin/activity")
@@ -2022,6 +2121,11 @@ async def admin_activity_log(page: int = Query(1, ge=1), limit: int = Query(50, 
     except Exception as e:
         return {"error": str(e), "activity": [], "total": 0}
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.get("/api/admin/reset-requests")
@@ -2044,6 +2148,11 @@ async def admin_reset_requests(user: dict = Depends(require_admin)):
     except Exception as e:
         return {"error": str(e), "requests": []}
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.post("/api/admin/reset-requests/{request_id}/fulfill")
@@ -2067,6 +2176,11 @@ async def admin_fulfill_reset(request_id: int, user: dict = Depends(require_admi
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 @app.post("/api/admin/reset-requests/{request_id}/reject")
@@ -2083,6 +2197,11 @@ async def admin_reject_reset(request_id: int, user: dict = Depends(require_admin
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 
@@ -2363,6 +2482,11 @@ async def get_activity(user: dict = Depends(get_current_user)):
     except Exception as e:
         return {"error": str(e), "logs": []}
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 
@@ -2473,6 +2597,11 @@ async def debug_orders_db(user: dict = Depends(require_admin)):
     except Exception as e:
         return {"error": str(e)}
     finally:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         put_db_connection(conn)
 
 
