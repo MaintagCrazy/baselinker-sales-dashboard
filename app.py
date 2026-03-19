@@ -1326,9 +1326,23 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
     global_channel_units = defaultdict(int)
     global_channel_revenue = defaultdict(float)
 
+    # Build SKU fallback index from full_inventory cache
+    _sku_inv_fallback = {}
+    for item in cache.get("full_inventory", []):
+        sku = item.get('sku', '')
+        if sku:
+            _sku_inv_fallback[sku] = {
+                'stock': item.get('current_stock', 0),
+                'image_url': item.get('image_url', ''),
+                'shopify_variant_id': item.get('shopify_variant_id', ''),
+            }
+
     for variant_key, data in sales_data.items():
         bl_pid = data['bl_product_id']
         inv_info = inventory.get(bl_pid, {})
+        # Fallback: if catalog variant ID not in inventory, try SKU match
+        if not inv_info and data['sku']:
+            inv_info = _sku_inv_fallback.get(data['sku'], {})
         revenue = round(data['total_revenue'], 2)
         total_revenue += revenue
         # Match POs by BaseLinker Variant ID — exact numeric match from import sheet column B
@@ -1500,13 +1514,6 @@ def refresh_data():
                 if vid and vid != '0':
                     product_ids.add(vid)
 
-        inventory = {}
-        # Build from full_inventory (has correct variant-level stock)
-        # get_inventory was removed — it passed variant IDs to an API expecting parent IDs
-
-        # Cache inventory for reuse
-        cache["inventory"] = inventory
-
         # Fetch full inventory for search (all products/variants with names, SKUs, stock)
         try:
             full_inv = fetch_full_inventory()
@@ -1514,36 +1521,43 @@ def refresh_data():
         except Exception as e:
             logger.warning(f"Full inventory fetch failed (search may be limited): {e}")
 
-        # Enrich inventory with variant-level stock from full_inventory.
-        # get_inventory() only works for parent product IDs, but orders reference
-        # variant IDs — so variant stock was missing (defaulting to 0).
-        # full_inventory has correct per-variant stock keyed by variant ID.
+        # Build inventory lookup from full_inventory.
+        # CRITICAL: Orders use CATALOG variant_ids (e.g. 478011847) which are DIFFERENT
+        # from INVENTORY variant_ids (e.g. 503940001). They share the same SKU.
+        # So we build TWO indexes: by inventory variant ID AND by SKU.
         full_inv_data = cache.get("full_inventory", [])
-        enriched = 0
+        inventory = {}
+        sku_to_inv = {}  # SKU -> inventory data (for matching orders by SKU)
+
         for item in full_inv_data:
             vid = str(item.get('bl_product_id', ''))
-            if vid and vid not in inventory:
-                inventory[vid] = {
-                    'stock': item.get('current_stock', 0),
-                    'image_url': item.get('image_url', ''),
-                    'shopify_variant_id': item.get('shopify_variant_id', ''),
-                }
-                enriched += 1
-        if enriched:
-            logger.info(f"Inventory enriched: {enriched} variant-level stock entries added from full inventory")
+            inv_entry = {
+                'stock': item.get('current_stock', 0),
+                'image_url': item.get('image_url', ''),
+                'shopify_variant_id': item.get('shopify_variant_id', ''),
+            }
+            if vid:
+                inventory[vid] = inv_entry
+            sku = item.get('sku', '')
+            if sku:
+                sku_to_inv[sku] = inv_entry
 
-        # Also update existing entries that have stock=0 with full_inventory data
-        # (parent ID was found but returned aggregate stock instead of variant stock)
-        full_inv_by_id = {str(item['bl_product_id']): item for item in full_inv_data}
-        corrected = 0
-        for vid, inv_data in inventory.items():
-            if inv_data.get('stock', 0) == 0 and vid in full_inv_by_id:
-                real_stock = full_inv_by_id[vid].get('current_stock', 0)
-                if real_stock > 0:
-                    inv_data['stock'] = real_stock
-                    corrected += 1
-        if corrected:
-            logger.info(f"Inventory corrected: {corrected} entries updated with real variant stock")
+        logger.info(f"Inventory indexed: {len(inventory)} by variant ID, {len(sku_to_inv)} by SKU")
+
+        # Also index by catalog variant_id from orders (product_ids set)
+        # These are the IDs that build_response will look up
+        # Match them to inventory via SKU from the orders
+        sales_data = aggregate_sales(orders_merged, order_sources)
+        sku_matched = 0
+        for variant_key, data in sales_data.items():
+            bl_pid = data['bl_product_id']
+            sku = data['sku']
+            # If this catalog variant_id is not in inventory, try matching by SKU
+            if bl_pid and bl_pid not in inventory and sku and sku in sku_to_inv:
+                inventory[bl_pid] = sku_to_inv[sku]
+                sku_matched += 1
+        if sku_matched:
+            logger.info(f"Inventory SKU-matched: {sku_matched} catalog variant IDs linked to inventory via SKU")
 
         cache["inventory"] = inventory
 
