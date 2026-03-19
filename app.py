@@ -65,6 +65,24 @@ security = HTTPBearer(auto_error=False)
 
 # Currency conversion — BaseLinker returns price_brutto in the ORDER's currency
 EXCHANGE_RATES_AS_OF = "2024-01-01"
+
+# VAT rates by currency — used for net revenue estimation
+# PLN orders are Polish (23%), others use origin country standard rate
+VAT_RATES_BY_CURRENCY = {
+    'PLN': 0.23,
+    'EUR': 0.23,   # Default EU (most EU sales are Polish-VAT registered)
+    'CZK': 0.21,
+    'HUF': 0.27,
+    'SEK': 0.25,
+    'DKK': 0.25,
+    'NOK': 0.25,
+    'RON': 0.19,
+    'BGN': 0.20,
+    'GBP': 0.20,
+    'USD': 0.0,    # Non-EU — no VAT
+    'CHF': 0.0,    # Non-EU
+}
+DEFAULT_VAT_RATE = 0.23
 EXCHANGE_RATES_TO_PLN = {
     'PLN': 1.0,
     'EUR': 4.30,
@@ -1035,6 +1053,7 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
         'total_revenue': 0.0,
         'sales_by_channel': defaultdict(int),
         '_price_instances': [],  # track individual prices for outlier detection
+        '_revenue_by_currency': defaultdict(float),  # track revenue per currency for VAT calc
     })
 
     for order in orders:
@@ -1099,6 +1118,7 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
             sales_by_variant[variant_key]['total_revenue'] += p['product_revenue'] + delivery_share
             sales_by_variant[variant_key]['sales_by_channel'][channel] += p['qty']
             sales_by_variant[variant_key]['_price_instances'].append({'price': p['price'], 'qty': p['qty']})
+            sales_by_variant[variant_key]['_revenue_by_currency'][order_currency] += p['product_revenue'] + delivery_share
 
     # Post-process: detect and exclude outlier prices per variant
     result = {}
@@ -1128,6 +1148,7 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
         val['total_revenue'] = max(0.0, val['total_revenue'])
 
         val['sales_by_channel'] = dict(val['sales_by_channel'])
+        val['_revenue_by_currency'] = dict(val.get('_revenue_by_currency', {}))
         result[key] = val
 
     return result
@@ -1295,7 +1316,7 @@ def filter_products(products: list, category: str = "", po: str = "", search: st
     return filtered
 
 
-def build_response(orders: list, inventory: dict, po_items_map: dict, source_names: dict = None) -> dict:
+def build_response(orders: list, inventory: dict, po_items_map: dict, source_names: dict = None, costs: tuple = None) -> dict:
     """Build product list from orders + inventory + PO data. Reusable for date-filtered views."""
     sales_data = aggregate_sales(orders, source_names)
 
@@ -1319,7 +1340,7 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
         units_sold = max(0, data['units_sold'])
 
         # Stock: keep raw value but flag negative
-        raw_stock = inv_info.get('stock', 0)
+        raw_stock = max(0, inv_info.get('stock', 0))
 
         products.append({
             'image_url': inv_info.get('image_url', ''),
@@ -1332,7 +1353,8 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
             'category': determine_category(data['product_name']),
             'shopify_variant_id': inv_info.get('shopify_variant_id', ''),
             'bl_product_id': bl_pid,
-            'purchase_orders': product_pos
+            'purchase_orders': product_pos,
+            '_revenue_by_currency': data.get('_revenue_by_currency', {}),
         })
 
         # Accumulate global channel breakdown
@@ -1349,7 +1371,7 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
     products.sort(key=lambda x: x['units_sold'], reverse=True)
 
     # ========== COST ENRICHMENT ==========
-    costs_by_sku, costs_by_base_sku = cache.get("costs", ({}, {}))
+    costs_by_sku, costs_by_base_sku = costs if costs else cache.get("costs", ({}, {}))
     total_cost = 0.0
 
     for product in products:
@@ -1363,8 +1385,21 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
         product['cost_match'] = match_type
         total_cost += product['total_cost']
 
-    # Financial calculations
-    net_revenue = round(total_revenue / 1.23, 2)
+    # Financial calculations — per-currency VAT rates for accurate net revenue
+    # Aggregate revenue by currency across all products
+    total_revenue_by_currency = defaultdict(float)
+    for product in products:
+        for curr, rev in product.get('_revenue_by_currency', {}).items():
+            total_revenue_by_currency[curr] += rev
+    # Compute blended net revenue using per-currency VAT rates
+    net_revenue = 0.0
+    for curr, rev in total_revenue_by_currency.items():
+        vat_rate = VAT_RATES_BY_CURRENCY.get(curr, DEFAULT_VAT_RATE)
+        net_revenue += rev / (1 + vat_rate) if vat_rate > 0 else rev
+    # Fallback if no currency data available
+    if net_revenue == 0 and total_revenue > 0:
+        net_revenue = total_revenue / 1.23
+    net_revenue = round(net_revenue, 2)
     profit = round(net_revenue - total_cost, 2)
     profit_margin = round((profit / net_revenue) * 100, 1) if net_revenue > 0 else 0
 
@@ -1556,7 +1591,7 @@ async def lifespan(app: FastAPI):
     init_db_pool()
     init_database()
     log_activity("startup")
-    refresh_data()
+    await asyncio.to_thread(refresh_data)
     task = asyncio.create_task(background_refresh_task())
     yield
     task.cancel()
