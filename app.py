@@ -1591,7 +1591,10 @@ async def lifespan(app: FastAPI):
     init_db_pool()
     init_database()
     log_activity("startup")
-    await asyncio.to_thread(refresh_data)
+    # Run initial refresh in background thread — don't block startup
+    # so Railway health checks pass while data loads
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, refresh_data)
     task = asyncio.create_task(background_refresh_task())
     yield
     task.cancel()
