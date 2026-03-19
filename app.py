@@ -49,7 +49,10 @@ IMPORT_SHEET_ID = os.getenv("IMPORT_SHEET_ID", "1parHGahhvO6qnAnsvu4MNq18yl3M53D
 FALLBACK_MARKUP_GROSS = 3.444  # cost = gross_price / 3.444 (2.8x net markup + 23% VAT)
 
 # JWT Configuration
-JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_hex(32))
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    print("WARNING: JWT_SECRET not set — generating ephemeral secret. Sessions won't survive restarts.")
+    JWT_SECRET = secrets.token_hex(32)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 72
 security = HTTPBearer(auto_error=False)
@@ -102,40 +105,44 @@ cache = {
 
 REFRESH_INTERVAL = 1800  # 30 minutes in seconds
 
-# Database connection
-db_conn = None
+# Database connection pool
+db_pool = None
+
+
+def init_db_pool():
+    """Initialize the ThreadedConnectionPool."""
+    global db_pool
+    if not DATABASE_URL:
+        return
+    try:
+        from psycopg2.pool import ThreadedConnectionPool
+        db_pool = ThreadedConnectionPool(2, 10, DATABASE_URL)
+        print("Database connection pool initialized (min=2, max=10)")
+    except Exception as e:
+        print(f"Database pool initialization error: {e}")
+        db_pool = None
 
 
 def get_db_connection():
-    """Get PostgreSQL connection with auto-reconnect."""
-    global db_conn
-    if not DATABASE_URL:
+    """Get a connection from the pool. Caller MUST return it via put_db_connection()."""
+    if db_pool is None:
         return None
     try:
-        import psycopg2
-        # Check if existing connection is usable
-        if db_conn is not None and not db_conn.closed:
-            try:
-                db_conn.isolation_level  # triggers check
-                cur = db_conn.cursor()
-                cur.execute("SELECT 1")
-                cur.close()
-                return db_conn
-            except Exception:
-                # Connection is broken — close and reconnect
-                try:
-                    db_conn.close()
-                except Exception:
-                    pass
-                db_conn = None
-
-        db_conn = psycopg2.connect(DATABASE_URL)
-        db_conn.autocommit = False
-        return db_conn
+        conn = db_pool.getconn()
+        conn.autocommit = False
+        return conn
     except Exception as e:
         print(f"Database connection error: {e}")
-        db_conn = None
         return None
+
+
+def put_db_connection(conn):
+    """Return a connection to the pool."""
+    if conn is not None and db_pool is not None:
+        try:
+            db_pool.putconn(conn)
+        except Exception:
+            pass
 
 
 def init_database():
@@ -261,6 +268,8 @@ def init_database():
         print("Database tables initialized")
     except Exception as e:
         print(f"Database init error: {e}")
+    finally:
+        put_db_connection(conn)
 
 
 def save_orders_to_db(orders: list):
@@ -287,7 +296,7 @@ def save_orders_to_db(orders: list):
                 oid,
                 order.get('date_add', 0),
                 order.get('date_confirmed', 0),
-                order.get('order_status_id') or order.get('status_id'),
+                order.get('order_status_id') if order.get('order_status_id') is not None else order.get('status_id'),
                 order.get('order_source', ''),
                 order.get('order_source_id', 0),
                 (order.get('currency', '') or 'PLN').upper(),
@@ -303,9 +312,11 @@ def save_orders_to_db(orders: list):
         print(f"Error saving orders to DB: {e}")
         try:
             conn.rollback()
-        except:
+        except Exception:
             pass
         return 0
+    finally:
+        put_db_connection(conn)
 
 
 def load_orders_from_db(min_date_add: int = 0) -> list:
@@ -331,6 +342,8 @@ def load_orders_from_db(min_date_add: int = 0) -> list:
     except Exception as e:
         print(f"Error loading orders from DB: {e}")
         return []
+    finally:
+        put_db_connection(conn)
 
 
 def get_db_order_count() -> int:
@@ -344,8 +357,10 @@ def get_db_order_count() -> int:
         count = cur.fetchone()[0]
         cur.close()
         return count
-    except:
+    except Exception:
         return 0
+    finally:
+        put_db_connection(conn)
 
 
 def log_activity(action: str, data: dict = None):
@@ -369,6 +384,8 @@ def log_activity(action: str, data: dict = None):
         cur.close()
     except Exception as e:
         print(f"Log activity error: {e}")
+    finally:
+        put_db_connection(conn)
 
 
 def save_sales_snapshot(products: list):
@@ -378,7 +395,8 @@ def save_sales_snapshot(products: list):
         return
     try:
         cur = conn.cursor()
-        for p in products[:50]:
+        sorted_products = sorted(products, key=lambda x: x.get('units_sold', 0), reverse=True)
+        for p in sorted_products[:50]:
             cur.execute("""
                 INSERT INTO sales_snapshot (sku, product_name, units_sold, current_stock)
                 VALUES (%s, %s, %s, %s)
@@ -387,6 +405,8 @@ def save_sales_snapshot(products: list):
         cur.close()
     except Exception as e:
         print(f"Save snapshot error: {e}")
+    finally:
+        put_db_connection(conn)
 
 
 # ========== AUTH HELPER FUNCTIONS ==========
@@ -397,13 +417,13 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     try:
         return bcrypt.checkpw(password.encode(), hashed.encode())
-    except:
+    except Exception:
         return False
 
 def verify_pin(pin: str, hashed: str) -> bool:
     try:
         return bcrypt.checkpw(pin.encode(), hashed.encode())
-    except:
+    except Exception:
         return False
 
 def get_client_ip(request: Request) -> str:
@@ -433,7 +453,9 @@ def create_session(user_id: int, request: Request) -> str:
         except Exception as e:
             print(f"Session creation error: {e}")
             try: conn.rollback()
-            except: pass
+            except Exception: pass
+        finally:
+            put_db_connection(conn)
     return token
 
 async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -482,8 +504,10 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
         raise
     except Exception as e:
         try: conn.rollback()
-        except: pass
+        except Exception: pass
         raise HTTPException(status_code=500, detail=f"Auth error: {e}")
+    finally:
+        put_db_connection(conn)
 
 async def require_admin(user: dict = Depends(get_current_user)):
     if user.get("role") != "admin":
@@ -504,6 +528,8 @@ def log_user_activity(user_id: int, jti: str, action: str, details: dict = None)
         cur.close()
     except Exception as e:
         print(f"Activity log error: {e}")
+    finally:
+        put_db_connection(conn)
 
 
 # ========== PYDANTIC MODELS ==========
@@ -713,12 +739,12 @@ def load_costs_and_pos_from_import_sheet():
 
                 try:
                     cost = float(cost_str.replace('zł', '').replace('PLN', '').replace('$', '').replace(',', '').strip())
-                except:
+                except Exception:
                     continue
 
                 try:
                     qty = int(float(qty_str)) if qty_str else 1
-                except:
+                except Exception:
                     qty = 1
 
                 if cost <= 0:
@@ -991,7 +1017,7 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
                 continue  # skip only if BOTH variant_id and SKU are missing
             name = product.get('name', '') or 'Unknown'
             qty = int(product.get('quantity', 1))
-            price_original = float(product.get('price_brutto', 0))
+            price_original = float(product.get('price_brutto') or 0)
             price = convert_to_pln(price_original, order_currency)
             product_revenue = price * qty
             order_products_total += product_revenue
@@ -1002,11 +1028,14 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
 
         # Second pass: distribute delivery fee proportionally and accumulate
         for p in order_products:
-            variant_key = p['sku'] if p['sku'] else p['bl_product_id']
+            variant_key = p['bl_product_id'] if p['bl_product_id'] and p['bl_product_id'] != '0' else p['sku']
             # Proportional share of delivery cost
             delivery_share = 0.0
-            if delivery_price > 0 and order_products_total > 0:
-                delivery_share = delivery_price * (p['product_revenue'] / order_products_total)
+            if delivery_price > 0:
+                if order_products_total > 0:
+                    delivery_share = delivery_price * (p['product_revenue'] / order_products_total)
+                else:
+                    delivery_share = delivery_price / len(order_products)
 
             sales_by_variant[variant_key]['product_name'] = p['name']
             sales_by_variant[variant_key]['sku'] = p['sku']
@@ -1031,11 +1060,13 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
                     inst['price'] * inst['qty'] for inst in instances
                     if inst['price'] <= median_price * 10
                 )
+                clean_units = sum(inst['qty'] for inst in instances if inst['price'] <= median_price * 10)
                 if clean_revenue != val['total_revenue']:
                     excluded = val['total_revenue'] - clean_revenue
                     print(f"Outlier detected for {key}: excluded {excluded:.2f} PLN "
                           f"(median={median_price:.2f}, threshold={median_price*10:.2f})")
                     val['total_revenue'] = clean_revenue
+                    val['units_sold'] = max(0, clean_units)
 
         # Floor units_sold and revenue at 0 — negative means returns exceeded sales
         val['units_sold'] = max(0, val['units_sold'])
@@ -1150,7 +1181,7 @@ def fetch_full_inventory() -> list:
                     v_name_raw = vdata.get('name', '')
                     v_sku = vdata.get('sku', '') or sku
                     v_stock_data = vdata.get('stock', {})
-                    v_stock = sum(int(s) for s in v_stock_data.values() if s) if v_stock_data else total_stock
+                    v_stock = sum(int(s) for s in v_stock_data.values() if s) if v_stock_data is not None else total_stock
                     v_images = vdata.get('images', {})
                     v_image = list(v_images.values())[0] if v_images else image_url
                     v_display = f"{name} - {v_name_raw}" if v_name_raw else name
@@ -1390,7 +1421,7 @@ def refresh_data():
         merged_financial = {}
         # Start with DB orders (includes historical) — only financial statuses
         for o in db_orders:
-            o_status = o.get('order_status_id') or o.get('status_id')
+            o_status = o.get('order_status_id') if o.get('order_status_id') is not None else o.get('status_id')
             if o_status in FINANCIAL_STATUS_IDS:
                 merged_financial[o['order_id']] = o
         # Override with fresh API data (more up-to-date)
@@ -1499,6 +1530,11 @@ async def background_refresh_task():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
+    if not BASELINKER_API_KEY:
+        print("CRITICAL: BASELINKER_API_KEY not set!")
+    if not DATABASE_URL:
+        print("CRITICAL: DATABASE_URL not set!")
+    init_db_pool()
     init_database()
     log_activity("startup")
     refresh_data()
@@ -1527,7 +1563,7 @@ async def health_check():
         "status": "healthy",
         "last_updated": cache["last_updated"],
         "data_loaded": cache["data"] is not None,
-        "database_connected": get_db_connection() is not None,
+        "database_connected": db_pool is not None,
         "orders_in_db": get_db_order_count()
     }
 
@@ -1540,84 +1576,87 @@ async def pin_login(req: PinLoginRequest, request: Request):
     if not conn:
         raise HTTPException(status_code=500, detail="Database unavailable")
 
-    ip = get_client_ip(request)
-
-    # Rate limit: 5 attempts per IP in 5 minutes
     try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT COUNT(*) FROM pin_attempts
-            WHERE ip_address = %s AND attempted_at > NOW() - INTERVAL '5 minutes' AND NOT success
-        """, (ip,))
-        attempts = cur.fetchone()[0]
-        cur.close()
+        ip = get_client_ip(request)
 
-        if attempts >= 5:
-            return {"success": False, "fallback": "email_password", "message": "Too many PIN attempts. Use email and password."}
-    except Exception:
-        try: conn.rollback()
-        except: pass
-
-    # Find users with PINs
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT id, email, display_name, role, pin_hash, is_banned, must_change_password FROM users WHERE pin_hash IS NOT NULL")
-        users = cur.fetchall()
-        cur.close()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        raise HTTPException(status_code=500, detail=str(e))
-
-    matched_user = None
-    for u in users:
-        if u[4] and verify_pin(req.pin, u[4]):
-            matched_user = u
-            break
-
-    # Log attempt
-    try:
-        cur = conn.cursor()
-        cur.execute("INSERT INTO pin_attempts (ip_address, success) VALUES (%s, %s)", (ip, matched_user is not None))
-        conn.commit()
-        cur.close()
-    except Exception:
-        try: conn.rollback()
-        except: pass
-
-    if not matched_user:
-        # Check if this was the 3rd failure
+        # Rate limit: 5 attempts per IP in 5 minutes
         try:
             cur = conn.cursor()
             cur.execute("""
                 SELECT COUNT(*) FROM pin_attempts
                 WHERE ip_address = %s AND attempted_at > NOW() - INTERVAL '5 minutes' AND NOT success
             """, (ip,))
-            fail_count = cur.fetchone()[0]
+            attempts = cur.fetchone()[0]
             cur.close()
-            if fail_count >= 5:
-                return {"success": False, "fallback": "email_password", "message": "Too many attempts. Use email and password."}
-        except:
-            pass
-        return {"success": False, "message": "Invalid PIN"}
 
-    if matched_user[5]:  # is_banned
-        return {"success": False, "message": "Account is banned"}
+            if attempts >= 5:
+                return {"success": False, "fallback": "email_password", "message": "Too many PIN attempts. Use email and password."}
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
 
-    token = create_session(matched_user[0], request)
-    log_user_activity(matched_user[0], "", "pin_login", {"ip": ip})
+        # Find users with PINs
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, email, display_name, role, pin_hash, is_banned, must_change_password FROM users WHERE pin_hash IS NOT NULL")
+            users = cur.fetchall()
+            cur.close()
+        except Exception as e:
+            try: conn.rollback()
+            except Exception: pass
+            raise HTTPException(status_code=500, detail=str(e))
 
-    return {
-        "success": True,
-        "token": token,
-        "user": {
-            "id": matched_user[0],
-            "email": matched_user[1],
-            "display_name": matched_user[2],
-            "role": matched_user[3],
-            "must_change_password": matched_user[6]
+        matched_user = None
+        for u in users:
+            if u[4] and verify_pin(req.pin, u[4]):
+                matched_user = u
+                break
+
+        # Log attempt
+        try:
+            cur = conn.cursor()
+            cur.execute("INSERT INTO pin_attempts (ip_address, success) VALUES (%s, %s)", (ip, matched_user is not None))
+            conn.commit()
+            cur.close()
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
+
+        if not matched_user:
+            # Check if this was the 3rd failure
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT COUNT(*) FROM pin_attempts
+                    WHERE ip_address = %s AND attempted_at > NOW() - INTERVAL '5 minutes' AND NOT success
+                """, (ip,))
+                fail_count = cur.fetchone()[0]
+                cur.close()
+                if fail_count >= 5:
+                    return {"success": False, "fallback": "email_password", "message": "Too many attempts. Use email and password."}
+            except Exception:
+                pass
+            return {"success": False, "message": "Invalid PIN"}
+
+        if matched_user[5]:  # is_banned
+            return {"success": False, "message": "Account is banned"}
+
+        token = create_session(matched_user[0], request)
+        log_user_activity(matched_user[0], "", "pin_login", {"ip": ip})
+
+        return {
+            "success": True,
+            "token": token,
+            "user": {
+                "id": matched_user[0],
+                "email": matched_user[1],
+                "display_name": matched_user[2],
+                "role": matched_user[3],
+                "must_change_password": matched_user[6]
+            }
         }
-    }
+    finally:
+        put_db_connection(conn)
 
 @app.post("/api/auth/login")
 async def email_login(req: EmailLoginRequest, request: Request):
@@ -1626,37 +1665,40 @@ async def email_login(req: EmailLoginRequest, request: Request):
         raise HTTPException(status_code=500, detail="Database unavailable")
 
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT id, email, display_name, role, password_hash, is_banned, must_change_password FROM users WHERE email = %s", (req.email.lower().strip(),))
-        user = cur.fetchone()
-        cur.close()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, email, display_name, role, password_hash, is_banned, must_change_password FROM users WHERE email = %s", (req.email.lower().strip(),))
+            user = cur.fetchone()
+            cur.close()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
-    if not user or not user[4]:
-        return {"success": False, "message": "Invalid email or password"}
+        if not user or not user[4]:
+            return {"success": False, "message": "Invalid email or password"}
 
-    if not verify_password(req.password, user[4]):
-        return {"success": False, "message": "Invalid email or password"}
+        if not verify_password(req.password, user[4]):
+            return {"success": False, "message": "Invalid email or password"}
 
-    if user[5]:  # is_banned
-        return {"success": False, "message": "Account is banned"}
+        if user[5]:  # is_banned
+            return {"success": False, "message": "Account is banned"}
 
-    token = create_session(user[0], request)
-    ip = get_client_ip(request)
-    log_user_activity(user[0], "", "email_login", {"ip": ip})
+        token = create_session(user[0], request)
+        ip = get_client_ip(request)
+        log_user_activity(user[0], "", "email_login", {"ip": ip})
 
-    return {
-        "success": True,
-        "token": token,
-        "user": {
-            "id": user[0],
-            "email": user[1],
-            "display_name": user[2],
-            "role": user[3],
-            "must_change_password": user[6]
+        return {
+            "success": True,
+            "token": token,
+            "user": {
+                "id": user[0],
+                "email": user[1],
+                "display_name": user[2],
+                "role": user[3],
+                "must_change_password": user[6]
+            }
         }
-    }
+    finally:
+        put_db_connection(conn)
 
 @app.post("/api/auth/set-password")
 async def set_password(req: SetPasswordRequest, user: dict = Depends(get_current_user)):
@@ -1677,6 +1719,8 @@ async def set_password(req: SetPasswordRequest, user: dict = Depends(get_current
         return {"success": True, "message": "Password set successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        put_db_connection(conn)
 
 @app.post("/api/auth/reset-request")
 async def request_reset(req: ResetRequestModel):
@@ -1699,6 +1743,8 @@ async def request_reset(req: ResetRequestModel):
         return {"success": True, "message": "Your request has been sent to the admin."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        put_db_connection(conn)
 
 @app.post("/api/auth/use-temp-password")
 async def use_temp_password(req: TempPasswordRequest, request: Request):
@@ -1727,7 +1773,7 @@ async def use_temp_password(req: TempPasswordRequest, request: Request):
         # Set new password and mark reset as used
         pw_hash = hash_password(req.new_password)
         cur.execute("UPDATE users SET password_hash = %s, must_change_password = FALSE, updated_at = NOW() WHERE id = %s", (pw_hash, user[0]))
-        cur.execute("UPDATE password_reset_requests SET status = 'used' WHERE id = %s", (reset_req[0],))
+        cur.execute("UPDATE password_reset_requests SET status = 'used', temp_password = NULL WHERE id = %s", (reset_req[0],))
         conn.commit()
 
         token = create_session(user[0], request)
@@ -1740,6 +1786,8 @@ async def use_temp_password(req: TempPasswordRequest, request: Request):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        put_db_connection(conn)
 
 @app.post("/api/auth/logout")
 async def logout(user: dict = Depends(get_current_user)):
@@ -1750,8 +1798,10 @@ async def logout(user: dict = Depends(get_current_user)):
             cur.execute("UPDATE user_sessions SET is_active = FALSE WHERE token_jti = %s", (user.get("jti"),))
             conn.commit()
             cur.close()
-        except:
+        except Exception:
             pass
+        finally:
+            put_db_connection(conn)
     log_user_activity(user["id"], user.get("jti", ""), "logout", {})
     return {"success": True}
 
@@ -1768,8 +1818,10 @@ async def heartbeat(user: dict = Depends(get_current_user)):
             cur.execute("UPDATE user_sessions SET last_heartbeat = NOW() WHERE token_jti = %s", (user.get("jti"),))
             conn.commit()
             cur.close()
-        except:
+        except Exception:
             pass
+        finally:
+            put_db_connection(conn)
     return {"ok": True}
 
 
@@ -1788,6 +1840,8 @@ async def admin_list_users(user: dict = Depends(require_admin)):
         return {"users": [{"id": r[0], "email": r[1], "display_name": r[2], "role": r[3], "is_banned": r[4], "must_change_password": r[5], "created_at": r[6].isoformat() if r[6] else None} for r in rows]}
     except Exception as e:
         return {"error": str(e), "users": []}
+    finally:
+        put_db_connection(conn)
 
 @app.post("/api/admin/users")
 async def admin_create_user(req: CreateUserRequest, user: dict = Depends(require_admin)):
@@ -1810,6 +1864,8 @@ async def admin_create_user(req: CreateUserRequest, user: dict = Depends(require
         return {"success": True, "user_id": new_id}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        put_db_connection(conn)
 
 @app.put("/api/admin/users/{user_id}")
 async def admin_update_user(user_id: int, req: UpdateUserRequest, user: dict = Depends(require_admin)):
@@ -1844,6 +1900,8 @@ async def admin_update_user(user_id: int, req: UpdateUserRequest, user: dict = D
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        put_db_connection(conn)
 
 @app.delete("/api/admin/users/{user_id}")
 async def admin_delete_user(user_id: int, user: dict = Depends(require_admin)):
@@ -1861,6 +1919,8 @@ async def admin_delete_user(user_id: int, user: dict = Depends(require_admin)):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        put_db_connection(conn)
 
 @app.get("/api/admin/sessions")
 async def admin_sessions(user: dict = Depends(require_admin)):
@@ -1882,6 +1942,8 @@ async def admin_sessions(user: dict = Depends(require_admin)):
         return {"sessions": [{"id": r[0], "email": r[1], "display_name": r[2], "created_at": r[3].isoformat() if r[3] else None, "last_heartbeat": r[4].isoformat() if r[4] else None, "ip_address": r[5], "user_agent": r[6], "is_online": r[7]} for r in rows]}
     except Exception as e:
         return {"error": str(e), "sessions": []}
+    finally:
+        put_db_connection(conn)
 
 @app.get("/api/admin/screen-time")
 async def admin_screen_time(user: dict = Depends(require_admin)):
@@ -1892,7 +1954,7 @@ async def admin_screen_time(user: dict = Depends(require_admin)):
         cur = conn.cursor()
         cur.execute("""
             SELECT u.email, u.display_name,
-                   DATE(s.created_at) as session_date,
+                   DATE(s.created_at AT TIME ZONE 'Europe/Warsaw') as session_date,
                    SUM(EXTRACT(EPOCH FROM (s.last_heartbeat - s.created_at)) / 60) as minutes
             FROM user_sessions s
             JOIN users u ON u.id = s.user_id
@@ -1906,6 +1968,8 @@ async def admin_screen_time(user: dict = Depends(require_admin)):
         return {"screen_time": [{"email": r[0], "display_name": r[1], "date": r[2].isoformat() if r[2] else None, "minutes": round(float(r[3] or 0), 1)} for r in rows]}
     except Exception as e:
         return {"error": str(e), "screen_time": []}
+    finally:
+        put_db_connection(conn)
 
 @app.get("/api/admin/search-history")
 async def admin_search_history(user: dict = Depends(require_admin)):
@@ -1927,6 +1991,8 @@ async def admin_search_history(user: dict = Depends(require_admin)):
         return {"searches": [{"email": r[0], "timestamp": r[1].isoformat() if r[1] else None, "query": r[2], "filters": r[3]} for r in rows]}
     except Exception as e:
         return {"error": str(e), "searches": []}
+    finally:
+        put_db_connection(conn)
 
 @app.get("/api/admin/activity")
 async def admin_activity_log(page: int = Query(1, ge=1), limit: int = Query(50, ge=1, le=200), user: dict = Depends(require_admin)):
@@ -1955,6 +2021,8 @@ async def admin_activity_log(page: int = Query(1, ge=1), limit: int = Query(50, 
         }
     except Exception as e:
         return {"error": str(e), "activity": [], "total": 0}
+    finally:
+        put_db_connection(conn)
 
 @app.get("/api/admin/reset-requests")
 async def admin_reset_requests(user: dict = Depends(require_admin)):
@@ -1975,6 +2043,8 @@ async def admin_reset_requests(user: dict = Depends(require_admin)):
         return {"requests": [{"id": r[0], "email": r[1], "display_name": r[2], "requested_at": r[3].isoformat() if r[3] else None, "reason": r[4], "status": r[5]} for r in rows]}
     except Exception as e:
         return {"error": str(e), "requests": []}
+    finally:
+        put_db_connection(conn)
 
 @app.post("/api/admin/reset-requests/{request_id}/fulfill")
 async def admin_fulfill_reset(request_id: int, user: dict = Depends(require_admin)):
@@ -1996,6 +2066,8 @@ async def admin_fulfill_reset(request_id: int, user: dict = Depends(require_admi
         return {"success": True, "temp_password": temp_pw}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        put_db_connection(conn)
 
 @app.post("/api/admin/reset-requests/{request_id}/reject")
 async def admin_reject_reset(request_id: int, user: dict = Depends(require_admin)):
@@ -2010,6 +2082,8 @@ async def admin_reject_reset(request_id: int, user: dict = Depends(require_admin
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        put_db_connection(conn)
 
 
 # ========== TRACKING ENDPOINT ==========
@@ -2224,7 +2298,7 @@ async def get_sales(
     filtered_orders = []
     for order in raw_orders:
         order_ts = order.get("date_add", 0)
-        order_status = order.get("order_status_id") or order.get("status_id")
+        order_status = order.get("order_status_id") if order.get("order_status_id") is not None else order.get("status_id")
         if order_status in EXCLUDED_STATUS_IDS:
             continue
         if isinstance(order_ts, (int, float)) and ts_from <= order_ts < ts_to:
@@ -2288,6 +2362,8 @@ async def get_activity(user: dict = Depends(get_current_user)):
         }
     except Exception as e:
         return {"error": str(e), "logs": []}
+    finally:
+        put_db_connection(conn)
 
 
 @app.get("/api/debug/costs")
@@ -2396,6 +2472,8 @@ async def debug_orders_db(user: dict = Depends(require_admin)):
         }
     except Exception as e:
         return {"error": str(e)}
+    finally:
+        put_db_connection(conn)
 
 
 @app.get("/api/download")
@@ -2438,7 +2516,7 @@ async def download_excel(
         filtered_orders = [
             o for o in raw_orders
             if ts_from <= o.get("date_add", 0) < ts_to
-            and (o.get("order_status_id") or o.get("status_id")) not in EXCLUDED_STATUS_IDS
+            and (o.get("order_status_id") if o.get("order_status_id") is not None else o.get("status_id")) in FINANCIAL_STATUS_IDS
         ]
         source_data = build_response(filtered_orders, inventory, po_items_map, order_sources)
     else:
