@@ -1429,6 +1429,39 @@ def refresh_data():
         except Exception as e:
             print(f"WARNING: Full inventory fetch failed (search may be limited): {e}")
 
+        # Enrich inventory with variant-level stock from full_inventory.
+        # get_inventory() only works for parent product IDs, but orders reference
+        # variant IDs — so variant stock was missing (defaulting to 0).
+        # full_inventory has correct per-variant stock keyed by variant ID.
+        full_inv_data = cache.get("full_inventory", [])
+        enriched = 0
+        for item in full_inv_data:
+            vid = str(item.get('bl_product_id', ''))
+            if vid and vid not in inventory:
+                inventory[vid] = {
+                    'stock': item.get('current_stock', 0),
+                    'image_url': item.get('image_url', ''),
+                    'shopify_variant_id': item.get('shopify_variant_id', ''),
+                }
+                enriched += 1
+        if enriched:
+            print(f"Inventory enriched: {enriched} variant-level stock entries added from full inventory")
+
+        # Also update existing entries that have stock=0 with full_inventory data
+        # (parent ID was found but returned aggregate stock instead of variant stock)
+        full_inv_by_id = {str(item['bl_product_id']): item for item in full_inv_data}
+        corrected = 0
+        for vid, inv_data in inventory.items():
+            if inv_data.get('stock', 0) == 0 and vid in full_inv_by_id:
+                real_stock = full_inv_by_id[vid].get('current_stock', 0)
+                if real_stock > 0:
+                    inv_data['stock'] = real_stock
+                    corrected += 1
+        if corrected:
+            print(f"Inventory corrected: {corrected} entries updated with real variant stock")
+
+        cache["inventory"] = inventory
+
         # PO items map for build_response (keyed by BaseLinker Variant ID)
         po_items_map = po_items_by_bl_id
 
