@@ -30,6 +30,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 def strip_diacritics(text: str) -> str:
     """Remove diacritics/accents for accent-insensitive search."""
+    # Polish ł/Ł aren't decomposed by NFKD, handle them explicitly
+    text = text.translate(str.maketrans('łŁ', 'lL'))
     nfkd = unicodedata.normalize('NFKD', text)
     return ''.join(c for c in nfkd if not unicodedata.combining(c))
 
