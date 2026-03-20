@@ -18,6 +18,7 @@ import secrets
 import jwt
 import bcrypt
 import logging
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import defaultdict
@@ -25,6 +26,12 @@ from enum import Enum
 
 logger = logging.getLogger("sales-dashboard")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+
+def strip_diacritics(text: str) -> str:
+    """Remove diacritics/accents for accent-insensitive search."""
+    nfkd = unicodedata.normalize('NFKD', text)
+    return ''.join(c for c in nfkd if not unicodedata.combining(c))
 
 # User is in Poland — all date filtering must use Polish timezone
 POLISH_TZ = ZoneInfo("Europe/Warsaw")
@@ -65,7 +72,7 @@ JWT_EXPIRY_HOURS = 72
 security = HTTPBearer(auto_error=False)
 
 # Currency conversion — BaseLinker returns price_brutto in the ORDER's currency
-EXCHANGE_RATES_AS_OF = "2024-01-01"
+EXCHANGE_RATES_AS_OF = "2026-03-01"
 
 # VAT rates by currency — used for net revenue estimation
 # PLN orders are Polish (23%), others use origin country standard rate
@@ -86,20 +93,20 @@ VAT_RATES_BY_CURRENCY = {
 DEFAULT_VAT_RATE = 0.23
 EXCHANGE_RATES_TO_PLN = {
     'PLN': 1.0,
-    'EUR': 4.30,
-    'USD': 4.05,
-    'GBP': 5.10,
-    'CZK': 0.175,
-    'HUF': 0.0108,
-    'SEK': 0.39,
-    'DKK': 0.58,
-    'NOK': 0.38,
-    'CHF': 4.55,
-    'RON': 0.87,
-    'BGN': 2.20,
-    'HRK': 0.57,
-    'RUB': 0.045,
-    'UAH': 0.11,
+    'EUR': 4.18,
+    'USD': 3.95,
+    'GBP': 5.00,
+    'CZK': 0.17,
+    'HUF': 0.0105,
+    'SEK': 0.37,
+    'DKK': 0.56,
+    'NOK': 0.36,
+    'CHF': 4.45,
+    'RON': 0.84,
+    'BGN': 2.14,
+    'HRK': 0.55,
+    'RUB': 0.043,
+    'UAH': 0.095,
 }
 
 
@@ -1283,6 +1290,20 @@ def fetch_full_inventory() -> list:
         time.sleep(0.5)
 
     logger.info(f"Full inventory: {len(full_list)} products/variants indexed, {matched} Shopify variant IDs matched by SKU")
+
+    # Deduplicate by SKU — keep entry with highest stock per SKU
+    seen_skus = {}
+    for item in full_list:
+        sku = item.get('sku', '')
+        if not sku:
+            continue
+        existing = seen_skus.get(sku)
+        if not existing or item.get('current_stock', 0) > existing.get('current_stock', 0):
+            seen_skus[sku] = item
+    deduped = [item for item in full_list if not item.get('sku') or seen_skus.get(item.get('sku')) is item]
+    logger.info(f"Deduplicated inventory: {len(full_list)} -> {len(deduped)} (removed {len(full_list) - len(deduped)} duplicate SKUs)")
+    full_list = deduped
+
     return full_list
 
 
@@ -2203,7 +2224,7 @@ async def admin_search_history(user: dict = Depends(require_admin)):
 async def admin_activity_log(page: int = Query(1, ge=1), limit: int = Query(50, ge=1, le=200), user: dict = Depends(require_admin)):
     conn = get_db_connection()
     if not conn:
-        return {"activity": [], "total": 0}
+        return {"activities": [], "total": 0}
     try:
         cur = conn.cursor()
         offset = (page - 1) * limit
@@ -2219,13 +2240,13 @@ async def admin_activity_log(page: int = Query(1, ge=1), limit: int = Query(50, 
         rows = cur.fetchall()
         cur.close()
         return {
-            "activity": [{"id": r[0], "email": r[1], "display_name": r[2], "timestamp": r[3].isoformat() if r[3] else None, "action": r[4], "details": r[5]} for r in rows],
+            "activities": [{"id": r[0], "email": r[1], "display_name": r[2], "timestamp": r[3].isoformat() if r[3] else None, "action": r[4], "details": r[5]} for r in rows],
             "total": total,
             "page": page,
             "pages": (total + limit - 1) // limit
         }
     except Exception as e:
-        return {"error": str(e), "activity": [], "total": 0}
+        return {"error": str(e), "activities": [], "total": 0}
     finally:
         if conn:
             try:
@@ -2315,6 +2336,9 @@ async def admin_reject_reset(request_id: int, user: dict = Depends(require_admin
 
 @app.post("/api/track")
 async def track_action(req: TrackRequest, user: dict = Depends(get_current_user)):
+    if req.action == "search" and (not req.details or not req.details.get("query")):
+        # Don't log empty/null search queries
+        return {"ok": True}
     log_user_activity(user["id"], user.get("jti", ""), req.action, req.details)
     return {"ok": True}
 
@@ -2354,12 +2378,12 @@ async def search_inventory(
     if not q or len(q) < 2:
         return {"products": [], "total": 0}
 
-    query = q.lower()
+    query_normalized = strip_diacritics(q.lower())
     matches = []
     for p in full_inv:
-        if (query in (p.get('product_name') or '').lower()
-            or query in (p.get('sku') or '').lower()
-            or query in str(p.get('bl_product_id', ''))):
+        if (query_normalized in strip_diacritics((p.get('product_name') or '').lower())
+            or query_normalized in strip_diacritics((p.get('sku') or '').lower())
+            or query_normalized in str(p.get('bl_product_id', ''))):
             matches.append(p)
 
     # Enrich with cost data
@@ -2409,10 +2433,10 @@ async def full_inventory(
             vid = variant_match.group(1)
             filtered = [p for p in filtered if str(p.get('shopify_variant_id', '')) == vid]
         else:
-            ql = query.lower()
+            ql = strip_diacritics(query.lower())
             filtered = [p for p in filtered if
-                ql in (p.get('product_name') or '').lower()
-                or ql in (p.get('sku') or '').lower()
+                ql in strip_diacritics((p.get('product_name') or '').lower())
+                or ql in strip_diacritics((p.get('sku') or '').lower())
                 or ql in str(p.get('bl_product_id', ''))
                 or ql in str(p.get('shopify_variant_id', ''))]
 
@@ -2424,9 +2448,11 @@ async def full_inventory(
     if stock_filter == 'in_stock':
         filtered = [p for p in filtered if p.get('current_stock', 0) > 0]
     elif stock_filter == 'out_of_stock':
-        filtered = [p for p in filtered if p.get('current_stock', 0) == 0]
+        filtered = [p for p in filtered if p.get('current_stock', 0) <= 0]
     elif stock_filter == 'low_stock':
         filtered = [p for p in filtered if 0 < p.get('current_stock', 0) <= 5]
+    elif stock_filter:  # non-empty but not a valid value
+        return JSONResponse(status_code=422, content={"error": f"Invalid stock_filter '{stock_filter}'. Use: in_stock, out_of_stock, low_stock"})
 
     # Sort by stock descending, then by name
     filtered.sort(key=lambda x: (-x.get('current_stock', 0), (x.get('product_name') or '').lower()))
@@ -2493,7 +2519,7 @@ async def get_sales(
 
     # With date params -> use ALL-status orders (not just Wysłane)
     # so "Yesterday" shows all 12 orders, not just 2 shipped ones
-    raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
+    raw_orders = cache.get("raw_orders") or cache.get("all_recent_orders")
     inventory = cache.get("inventory") or {}
     po_items_map = cache.get("po_items_by_bl_id") or {}
     order_sources = cache.get("order_sources", {})
@@ -2516,6 +2542,9 @@ async def get_sales(
             ts_to = int(time.time()) + 86400
     except ValueError:
         return JSONResponse(status_code=400, content={"error": "Invalid date format. Use YYYY-MM-DD."})
+
+    if ts_from > ts_to:
+        return JSONResponse(status_code=400, content={"error": "date_from must be before date_to"})
 
     # Filter orders by date_add (order creation time) — NOT date_confirmed
     # date_add is the actual order date; date_confirmed can be days later
@@ -2726,7 +2755,7 @@ async def download_excel(
     # Determine source products based on date filter
     if date_from or date_to:
         # Use ALL-status orders for date-filtered views (same as /api/sales)
-        raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
+        raw_orders = cache.get("raw_orders") or cache.get("all_recent_orders")
         inventory = cache.get("inventory") or {}
         po_items_map = cache.get("po_items_by_bl_id") or {}
         order_sources = cache.get("order_sources", {})
