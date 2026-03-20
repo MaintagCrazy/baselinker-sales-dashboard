@@ -11,6 +11,7 @@ import re
 import json
 import time
 import asyncio
+import threading
 import requests
 import uuid
 import secrets
@@ -1455,9 +1456,12 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
     }
 
 
+_refresh_lock = threading.Lock()
+
 def refresh_data():
     """Fetch fresh data from BaseLinker"""
-    if cache["is_refreshing"]:
+    if not _refresh_lock.acquire(blocking=False):
+        logger.info("Refresh already in progress, skipping")
         return cache["data"]
 
     cache["is_refreshing"] = True
@@ -1643,15 +1647,17 @@ def refresh_data():
         log_activity("error", {"message": str(e)})
     finally:
         cache["is_refreshing"] = False
+        _refresh_lock.release()
 
     return cache["data"]
 
 
 async def background_refresh_task():
-    """Background task to refresh data every hour"""
+    """Background task to refresh data periodically"""
     while True:
         await asyncio.sleep(REFRESH_INTERVAL)
-        refresh_data()
+        if not cache["is_refreshing"]:
+            await asyncio.to_thread(refresh_data)
 
 
 @asynccontextmanager
@@ -1693,6 +1699,7 @@ async def health_check():
         "status": "healthy",
         "last_updated": cache["last_updated"],
         "data_loaded": cache["data"] is not None,
+        "is_refreshing": cache["is_refreshing"],
         "database_connected": db_pool is not None,
         "orders_in_db": get_db_order_count()
     }
@@ -2143,7 +2150,7 @@ async def admin_screen_time(user: dict = Depends(require_admin)):
         cur.execute("""
             SELECT u.email, u.display_name,
                    DATE(s.created_at AT TIME ZONE 'Europe/Warsaw') as session_date,
-                   SUM(LEAST(EXTRACT(EPOCH FROM (s.last_heartbeat - s.created_at)), 86400) / 60) as minutes
+                   LEAST(SUM(LEAST(EXTRACT(EPOCH FROM (s.last_heartbeat - s.created_at)), 86400)) / 60, 1440) as minutes
             FROM user_sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.last_heartbeat > s.created_at
@@ -2558,7 +2565,7 @@ async def get_activity(user: dict = Depends(get_current_user)):
     """Get recent activity log"""
     conn = get_db_connection()
     if not conn:
-        return {"error": "Database not connected", "logs": []}
+        return {"error": "Database not connected", "activities": []}
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -2568,7 +2575,7 @@ async def get_activity(user: dict = Depends(get_current_user)):
         rows = cur.fetchall()
         cur.close()
         return {
-            "logs": [
+            "activities": [
                 {
                     "timestamp": r[0].isoformat() if r[0] else None,
                     "action": r[1],
@@ -2579,7 +2586,7 @@ async def get_activity(user: dict = Depends(get_current_user)):
             ]
         }
     except Exception as e:
-        return {"error": str(e), "logs": []}
+        return {"error": str(e), "activities": []}
     finally:
         if conn:
             try:
