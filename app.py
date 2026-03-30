@@ -2520,8 +2520,8 @@ async def get_sales(
         return strip_sales_data_for_stock_only(result) if is_stock_only else result
 
     # With date params -> use ALL-status orders (not just Wysłane)
-    # so "Yesterday" shows all 12 orders, not just 2 shipped ones
-    raw_orders = cache.get("raw_orders") or cache.get("all_recent_orders")
+    # so "Yesterday" shows all orders, not just shipped ones
+    raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
     inventory = cache.get("inventory") or {}
     po_items_map = cache.get("po_items_by_bl_id") or {}
     order_sources = cache.get("order_sources", {})
@@ -2550,12 +2550,12 @@ async def get_sales(
 
     # Filter orders by date_add (order creation time) — NOT date_confirmed
     # date_add is the actual order date; date_confirmed can be days later
-    # Exclude cancelled orders — they should never count toward financials
+    # Include ALL statuses except cancelled — so new/paid/packed orders all show up
     filtered_orders = []
     for order in raw_orders:
         order_ts = order.get("date_add", 0)
         order_status = order.get("order_status_id") if order.get("order_status_id") is not None else order.get("status_id")
-        if order_status not in FINANCIAL_STATUS_IDS:
+        if order_status in EXCLUDED_STATUS_IDS:
             continue
         if isinstance(order_ts, (int, float)) and ts_from <= order_ts < ts_to:
             filtered_orders.append(order)
@@ -2757,7 +2757,7 @@ async def download_excel(
     # Determine source products based on date filter
     if date_from or date_to:
         # Use ALL-status orders for date-filtered views (same as /api/sales)
-        raw_orders = cache.get("raw_orders") or cache.get("all_recent_orders")
+        raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
         inventory = cache.get("inventory") or {}
         po_items_map = cache.get("po_items_by_bl_id") or {}
         order_sources = cache.get("order_sources", {})
@@ -2782,7 +2782,7 @@ async def download_excel(
         filtered_orders = [
             o for o in raw_orders
             if ts_from <= o.get("date_add", 0) < ts_to
-            and (o.get("order_status_id") if o.get("order_status_id") is not None else o.get("status_id")) in FINANCIAL_STATUS_IDS
+            and (o.get("order_status_id") if o.get("order_status_id") is not None else o.get("status_id")) not in EXCLUDED_STATUS_IDS
         ]
         source_data = build_response(filtered_orders, inventory, po_items_map, order_sources)
     else:
