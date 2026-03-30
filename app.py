@@ -1428,6 +1428,12 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
 
     for product in products:
         cost, match_type = find_cost_for_sku(product['sku'], costs_by_sku, costs_by_base_sku)
+        # If SKU matching failed, try BL variant ID in po_items_map (has item_cost)
+        if cost == 0 and product.get('bl_product_id') and po_items_map:
+            po_refs = po_items_map.get(product['bl_product_id'], [])
+            if po_refs and po_refs[0].get('item_cost', 0) > 0:
+                cost = po_refs[0]['item_cost']
+                match_type = 'po_bl_id'
         if cost == 0 and product['units_sold'] > 0 and product['total_revenue'] > 0:
             avg_price = product['total_revenue'] / product['units_sold']
             cost = avg_price / FALLBACK_MARKUP_GROSS
