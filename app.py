@@ -1228,7 +1228,7 @@ def fetch_full_inventory() -> list:
                     v_stock_data = vdata.get('stock', {})
                     v_stock = sum(int(s) for s in v_stock_data.values() if s is not None) if v_stock_data is not None else total_stock
                     v_images = vdata.get('images', {})
-                    v_image = list(v_images.values())[0] if v_images else image_url
+                    v_image = list(v_images.values())[0] if v_images else ''
                     v_display = f"{name} - {v_name_raw}" if v_name_raw else name
 
                     full_list.append({
