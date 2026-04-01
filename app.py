@@ -1095,10 +1095,13 @@ def aggregate_sales(orders: list, source_names: dict = None) -> dict:
         order_products_total = 0.0
         for product in order.get('products', []):
             bl_product_id = str(product.get('variant_id', ''))
+            # If variant_id is 0/empty, fall back to product_id (some orders like custom/HURT
+            # have real BL IDs in product_id but 0 in variant_id)
+            if not bl_product_id or bl_product_id == '0':
+                bl_product_id = str(product.get('product_id', ''))
             sku = product.get('sku', '') or ''
-            # If variant_id is 0/empty (e.g. Erli orders), use SKU as fallback identifier
             if (not bl_product_id or bl_product_id == '0') and not sku:
-                continue  # skip only if BOTH variant_id and SKU are missing
+                continue  # skip only if BOTH variant_id/product_id and SKU are missing
             name = product.get('name', '') or 'Unknown'
             qty = int(product.get('quantity', 1))
             price_original = float(product.get('price_brutto') or 0)
