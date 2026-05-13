@@ -142,6 +142,8 @@ REFRESH_INTERVAL = 1800  # 30 minutes in seconds
 
 # Database connection pool
 db_pool = None
+DB_POOL_MIN = 2
+DB_POOL_MAX = 30
 
 
 def init_db_pool():
@@ -151,33 +153,108 @@ def init_db_pool():
         return
     try:
         from psycopg2.pool import ThreadedConnectionPool
-        db_pool = ThreadedConnectionPool(2, 10, DATABASE_URL)
-        logger.info("Database connection pool initialized (min=2, max=10)")
+        db_pool = ThreadedConnectionPool(DB_POOL_MIN, DB_POOL_MAX, DATABASE_URL)
+        logger.info(f"Database connection pool initialized (min={DB_POOL_MIN}, max={DB_POOL_MAX})")
     except Exception as e:
         logger.error(f"Database pool initialization error: {e}")
         db_pool = None
 
 
-def get_db_connection():
-    """Get a connection from the pool. Caller MUST return it via put_db_connection()."""
-    if db_pool is None:
+def get_direct_db_connection():
+    """One-shot direct connection that bypasses the pool.
+    Used by /health (so health probes never compete for pool slots) and as a
+    fallback when the pool is exhausted/wedged so login can't be locked out
+    by a leaked-connection scenario. Caller MUST close() it themselves OR
+    pass it to put_db_connection() which will close non-pool conns safely."""
+    if not DATABASE_URL:
         return None
     try:
-        conn = db_pool.getconn()
+        import psycopg2
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=5)
         conn.autocommit = False
         return conn
     except Exception as e:
-        logger.error(f"Database connection error: {e}")
+        logger.error(f"Direct DB connection error: {e}")
         return None
 
 
-def put_db_connection(conn):
-    """Return a connection to the pool."""
-    if conn is not None and db_pool is not None:
+def _validate_conn(conn) -> bool:
+    """Cheap liveness probe — returns True if conn is usable."""
+    try:
+        if conn is None or conn.closed:
+            return False
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        cur.close()
         try:
-            db_pool.putconn(conn)
+            conn.rollback()
         except Exception:
             pass
+        return True
+    except Exception:
+        return False
+
+
+def get_db_connection():
+    """Get a validated connection from the pool, with fallback to a one-shot
+    direct connection if the pool is exhausted or all pooled conns are dead.
+    This guarantees that auth/health/data routes never go 500 just because
+    the pool is in a bad state. Caller MUST return via put_db_connection()."""
+    if db_pool is None:
+        return get_direct_db_connection()
+
+    # Try pool first; if conn is dead, discard and retry once before falling back
+    for _ in range(2):
+        try:
+            conn = db_pool.getconn()
+        except Exception as e:
+            logger.warning(f"Pool unavailable ({e}); using direct connection fallback")
+            return get_direct_db_connection()
+        if _validate_conn(conn):
+            try:
+                conn.autocommit = False
+            except Exception:
+                pass
+            return conn
+        try:
+            db_pool.putconn(conn, close=True)
+        except Exception:
+            pass
+    logger.warning("All pooled conns failed validation; using direct connection fallback")
+    return get_direct_db_connection()
+
+
+def put_db_connection(conn):
+    """Return a pool conn; close a direct (non-pooled) conn safely."""
+    if conn is None:
+        return
+    if db_pool is not None:
+        try:
+            db_pool.putconn(conn)
+            return
+        except Exception:
+            pass
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
+def _pool_status():
+    """Diagnostic snapshot of the connection pool for /health."""
+    if db_pool is None:
+        return {"initialized": False}
+    try:
+        return {
+            "initialized": True,
+            "minconn": getattr(db_pool, "minconn", None),
+            "maxconn": getattr(db_pool, "maxconn", None),
+            "checked_out": len(getattr(db_pool, "_used", {})),
+            "idle": len(getattr(db_pool, "_pool", [])),
+        }
+    except Exception:
+        return {"initialized": True}
 
 
 def init_database():
@@ -1663,14 +1740,28 @@ def refresh_data():
         response_data = build_response(orders_merged, inventory, po_items_map, order_sources)
 
         now = datetime.now(timezone.utc)
-        cache["data"] = response_data
-        cache["last_updated"] = now.isoformat()
-        cache["next_refresh"] = (now + timedelta(seconds=REFRESH_INTERVAL)).isoformat()
-        cache["purchase_orders"] = po_list
+        # GUARD against silently corrupting the cache with an empty refresh.
+        # If BaseLinker is rate-limited AND the DB read failed (e.g. pool wedged),
+        # orders_merged will be empty. Preserve the last good cache rather than
+        # blank the dashboard — failure should look stale, not corrupted.
+        prev_data = cache.get("data")
+        if not orders_merged and prev_data is not None:
+            logger.warning(
+                "Refresh produced 0 merged orders — keeping previous cache "
+                "(last_updated=%s) to avoid showing a blank dashboard.",
+                cache.get("last_updated"),
+            )
+            cache["last_refresh_attempt"] = now.isoformat()
+            log_activity("refresh_skipped_empty", {"reason": "0 merged orders"})
+        else:
+            cache["data"] = response_data
+            cache["last_updated"] = now.isoformat()
+            cache["next_refresh"] = (now + timedelta(seconds=REFRESH_INTERVAL)).isoformat()
+            cache["purchase_orders"] = po_list
 
-        # Log to database
-        log_activity("refresh", cache["data"])
-        save_sales_snapshot(response_data["products"])
+            # Log to database
+            log_activity("refresh", cache["data"])
+            save_sales_snapshot(response_data["products"])
 
     except Exception as e:
         logger.error(f"Error refreshing data: {e}")
@@ -1727,14 +1818,44 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "healthy",
+    """Truthful health probe. Uses a dedicated single-shot DB connection that
+    bypasses the pool, so the probe never depletes pool slots and never lies
+    about DB connectivity when the pool is wedged. Returns 503 when the DB is
+    actually unreachable so external monitors can alert."""
+    db_ok = False
+    orders_in_db = 0
+    probe_error = None
+    conn = None
+    try:
+        conn = get_direct_db_connection()
+        if conn is not None:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM bl_orders")
+            orders_in_db = cur.fetchone()[0]
+            cur.close()
+            db_ok = True
+    except Exception as e:
+        probe_error = str(e)
+        logger.error(f"/health DB probe failed: {e}")
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    body = {
+        "status": "healthy" if db_ok else "degraded",
         "last_updated": cache["last_updated"],
         "data_loaded": cache["data"] is not None,
         "is_refreshing": cache["is_refreshing"],
-        "database_connected": db_pool is not None,
-        "orders_in_db": get_db_order_count()
+        "database_connected": db_ok,
+        "orders_in_db": orders_in_db,
+        "pool": _pool_status(),
     }
+    if probe_error:
+        body["probe_error"] = probe_error
+    return JSONResponse(content=body, status_code=200 if db_ok else 503)
 
 
 # ========== AUTH ROUTES ==========
