@@ -19,6 +19,7 @@ import jwt
 import bcrypt
 import logging
 import unicodedata
+import copy
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from collections import defaultdict
@@ -51,11 +52,19 @@ from pydantic import BaseModel
 BASELINKER_API_KEY = os.getenv("BASELINKER_API_KEY", "")
 BASELINKER_INVENTORY_ID = int(os.getenv("BASELINKER_INVENTORY_ID", "58952"))
 BASELINKER_API_URL = "https://api.baselinker.com/connector.php"
+NOWE_ZAMOWIENIA_STATUS_ID = 273566  # Nowe zamowienia (New orders)
 WYSLANE_STATUS_ID = 273568   # Wysłane (Shipped)
 SPAKOWANE_STATUS_ID = 273928  # Spakowane (Packed)
 ANULOWANE_STATUS_ID = 273569  # Anulowane (Cancelled)
+PATRON_SERWIS_STATUS_ID = 460087  # Patron serwis
 FINANCIAL_STATUS_IDS = {WYSLANE_STATUS_ID, SPAKOWANE_STATUS_ID}  # Statuses that count toward financials
-EXCLUDED_STATUS_IDS = {ANULOWANE_STATUS_ID}  # Statuses that should NEVER count
+DEFAULT_DASHBOARD_STATUS_IDS = {
+    NOWE_ZAMOWIENIA_STATUS_ID,
+    WYSLANE_STATUS_ID,
+    SPAKOWANE_STATUS_ID,
+    PATRON_SERWIS_STATUS_ID,
+}
+EXCLUDED_STATUS_IDS = {ANULOWANE_STATUS_ID}  # Excluded only when no explicit status filter is supplied
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # Google Sheets cost loading
@@ -133,6 +142,7 @@ cache = {
     "inventory": None,
     "po_items_by_bl_id": None,
     "order_sources": {},
+    "order_statuses": [],
     "all_recent_orders": None,
     "costs": ({}, {}),
     "full_inventory": [],  # All products/variants for search (name, sku, stock, image, bl_id)
@@ -375,6 +385,15 @@ def init_database():
             VALUES (%s, %s, %s, %s, TRUE)
             ON CONFLICT (email) DO NOTHING
         """, ('glamova.hdht@gmail.com', 'Admin', pin_hash, 'admin'))
+        cur.execute("""
+            UPDATE users
+            SET role = 'employee', updated_at = NOW()
+            WHERE COALESCE(role, '') NOT IN ('admin', 'full_access', 'editor')
+              AND (
+                LOWER(COALESCE(display_name, '')) IN ('nametag employee', 'name tag employee', 'employee')
+                OR LOWER(email) LIKE '%nametag%employee%'
+              )
+        """)
         conn.commit()
         cur.close()
         logger.info("Database tables initialized")
@@ -714,8 +733,15 @@ class TempPasswordRequest(BaseModel):
 class UserRole(str, Enum):
     admin = "admin"
     full_access = "full_access"
+    employee = "employee"
     stock_only = "stock_only"
 VALID_ROLES = {r.value for r in UserRole}
+FINANCIAL_ACCESS_ROLES = {"admin", "full_access", "editor"}
+EMPLOYEE_ACCESS_ROLES = {"employee"}
+STOCK_ONLY_ROLES = {"stock_only", "viewer"}
+PERFORMANCE_ACCESS_ROLES = FINANCIAL_ACCESS_ROLES | EMPLOYEE_ACCESS_ROLES
+EMPLOYEE_MAX_RANGE_DAYS = 95
+RECENT_ALL_STATUS_DAYS = 120
 
 class CreateUserRequest(BaseModel):
     email: str
@@ -732,6 +758,91 @@ class UpdateUserRequest(BaseModel):
 class TrackRequest(BaseModel):
     action: str
     details: dict = None
+
+
+def has_financial_access(user: dict) -> bool:
+    return (user or {}).get("role") in FINANCIAL_ACCESS_ROLES
+
+
+def has_performance_access(user: dict) -> bool:
+    return (user or {}).get("role") in PERFORMANCE_ACCESS_ROLES
+
+
+def is_employee_user(user: dict) -> bool:
+    return (user or {}).get("role") in EMPLOYEE_ACCESS_ROLES
+
+
+def is_stock_only_user(user: dict) -> bool:
+    role = (user or {}).get("role")
+    return role in STOCK_ONLY_ROLES or role not in PERFORMANCE_ACCESS_ROLES
+
+
+def safe_int(value, default: int = 0) -> int:
+    try:
+        if value is None or value == "":
+            return default
+        return int(float(value))
+    except Exception:
+        return default
+
+
+def sum_ordered_units(po_refs: list) -> int:
+    return sum(max(0, safe_int(po.get("quantity_ordered"))) for po in (po_refs or []))
+
+
+def apply_performance_metrics(product: dict) -> dict:
+    units_sold = max(0, safe_int(product.get("units_sold")))
+    units_imported = max(0, safe_int(product.get("units_imported"), sum_ordered_units(product.get("purchase_orders", []))))
+    current_stock = safe_int(product.get("current_stock"))
+    sell_through = round((units_sold / units_imported) * 100, 1) if units_imported > 0 else None
+
+    if units_sold <= 0 and units_imported > 0:
+        status = "not_sold"
+    elif current_stock <= 0 and units_sold > 0:
+        status = "sold_out"
+    elif sell_through is not None and sell_through >= 80:
+        status = "fast_mover"
+    elif current_stock <= 5 and units_sold > 0:
+        status = "low_stock"
+    elif sell_through is not None and sell_through <= 20 and current_stock > 5:
+        status = "slow_mover"
+    elif units_sold > 0:
+        status = "selling"
+    else:
+        status = "stock_only"
+
+    product["units_sold"] = units_sold
+    product["units_imported"] = units_imported
+    product["sell_through_rate"] = sell_through
+    product["performance_status"] = status
+    product["is_sold_out"] = current_stock <= 0 and units_sold > 0
+    return product
+
+
+def strip_po_item_financials(po: dict) -> dict:
+    return {
+        "document_number": po.get("document_number"),
+        "quantity_ordered": safe_int(po.get("quantity_ordered")),
+        "product_sku": po.get("product_sku", ""),
+    }
+
+
+def sanitize_purchase_orders_for_user(po_list: list, user: dict) -> list:
+    if has_financial_access(user):
+        return po_list or []
+
+    sanitized = []
+    for po in po_list or []:
+        item = {
+            "po_id": po.get("po_id"),
+            "document_number": po.get("document_number"),
+            "items_count": po.get("items_count", 0),
+            "product_ids": po.get("product_ids", []),
+        }
+        if is_employee_user(user):
+            item["total_quantity"] = po.get("total_quantity", 0)
+        sanitized.append(item)
+    return sanitized
 
 
 def call_baselinker(method: str, params: dict = None) -> dict:
@@ -752,6 +863,93 @@ def call_baselinker(method: str, params: dict = None) -> dict:
         return result
     except Exception as e:
         return {"error": str(e)}
+
+
+def fallback_order_statuses() -> list:
+    return [
+        {"id": NOWE_ZAMOWIENIA_STATUS_ID, "name": "Nowe zamowienia", "color": "#0077DA"},
+        {"id": WYSLANE_STATUS_ID, "name": "Wyslane", "color": "#22a564"},
+        {"id": SPAKOWANE_STATUS_ID, "name": "Spakowane", "color": "#dc4ff5"},
+        {"id": ANULOWANE_STATUS_ID, "name": "Anulowane", "color": "#d54839"},
+        {"id": PATRON_SERWIS_STATUS_ID, "name": "Patron serwis", "color": "#000470"},
+    ]
+
+
+def fetch_order_statuses() -> list:
+    """Fetch BaseLinker order statuses for the status selector."""
+    result = call_baselinker('getOrderStatusList')
+    if "error" in result:
+        logger.error(f"Error fetching order statuses: {result.get('error')}")
+        return fallback_order_statuses()
+
+    statuses = []
+    for raw in result.get("statuses", []) or []:
+        status_id = safe_int(raw.get("id"), None)
+        if status_id is None:
+            continue
+        statuses.append({
+            "id": status_id,
+            "name": str(raw.get("name") or status_id).strip(),
+            "name_for_customer": str(raw.get("name_for_customer") or "").strip(),
+            "color": str(raw.get("color") or "#6b7280"),
+        })
+
+    return statuses or fallback_order_statuses()
+
+
+def get_order_statuses(refresh_if_empty: bool = False) -> list:
+    statuses = cache.get("order_statuses") or []
+    if refresh_if_empty and not statuses:
+        statuses = fetch_order_statuses()
+        cache["order_statuses"] = statuses
+    return statuses or fallback_order_statuses()
+
+
+def parse_order_status_ids(status_ids: str) -> set:
+    """Parse a comma-separated status list. Missing value means dashboard defaults."""
+    status_ids = (status_ids or "").strip()
+    if not status_ids:
+        return set(DEFAULT_DASHBOARD_STATUS_IDS)
+    if status_ids.lower() == "all":
+        return {safe_int(st.get("id")) for st in get_order_statuses(True) if st.get("id") is not None}
+    if status_ids.lower() in {"none", "__none__"}:
+        return set()
+
+    parsed = set()
+    for token in status_ids.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            parsed.add(int(token))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status ID: {token}")
+    return parsed
+
+
+def get_order_status_id(order: dict) -> int:
+    return safe_int(
+        order.get("order_status_id") if order.get("order_status_id") is not None else order.get("status_id"),
+        0,
+    )
+
+
+def count_orders_by_status(orders: list) -> dict:
+    counts = defaultdict(int)
+    for order in orders or []:
+        status_id = get_order_status_id(order)
+        if status_id:
+            counts[str(status_id)] += 1
+    return dict(counts)
+
+
+def order_status_payload(selected_status_ids: set, status_counts: dict = None) -> dict:
+    return {
+        "order_statuses": get_order_statuses(True),
+        "default_status_ids": sorted(DEFAULT_DASHBOARD_STATUS_IDS),
+        "selected_status_ids": sorted(selected_status_ids or []),
+        "order_status_counts": status_counts or {},
+    }
 
 
 def determine_category(name: str) -> str:
@@ -1043,7 +1241,7 @@ def fetch_all_financial_orders() -> list:
     return list(all_orders.values())
 
 
-def fetch_recent_orders_all_statuses(days: int = 90) -> list:
+def fetch_recent_orders_all_statuses(days: int = RECENT_ALL_STATUS_DAYS) -> list:
     """Fetch orders from ALL statuses for date-filtered views.
 
     When filtering by date (Today, Yesterday, etc.), we want ALL orders placed
@@ -1420,7 +1618,14 @@ def filter_products(products: list, category: str = "", po: str = "", search: st
     return filtered
 
 
-def build_response(orders: list, inventory: dict, po_items_map: dict, source_names: dict = None, costs: tuple = None) -> dict:
+def build_response(
+    orders: list,
+    inventory: dict,
+    po_items_map: dict,
+    source_names: dict = None,
+    costs: tuple = None,
+    include_imported_unsold: bool = False,
+) -> dict:
     """Build product list from orders + inventory + PO data. Reusable for date-filtered views."""
     sales_data = aggregate_sales(orders, source_names)
 
@@ -1467,6 +1672,7 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
         product_pos = po_items_map.get(bl_pid, []) if po_items_map else []
         if product_pos:
             po_match_count += 1
+        units_imported = sum_ordered_units(product_pos)
 
         # Floor units_sold at 0 (negative quantities from returns get netted)
         units_sold = max(0, data['units_sold'])
@@ -1474,11 +1680,12 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
         # Stock: keep raw value but flag negative
         raw_stock = max(0, inv_info.get('stock', 0))
 
-        products.append({
+        product = {
             'image_url': inv_info.get('image_url', ''),
             'product_name': data['product_name'],
             'sku': data['sku'],
             'units_sold': units_sold,
+            'units_imported': units_imported,
             'current_stock': raw_stock,
             'total_revenue': revenue,
             'sales_by_channel': data['sales_by_channel'],
@@ -1487,7 +1694,8 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
             'bl_product_id': bl_pid,
             'purchase_orders': product_pos,
             '_revenue_by_currency': data.get('_revenue_by_currency', {}),
-        })
+        }
+        products.append(apply_performance_metrics(product))
 
         # Accumulate global channel breakdown
         for channel, qty in data['sales_by_channel'].items():
@@ -1500,7 +1708,40 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
                 if qty > 0:
                     global_channel_revenue[channel] += revenue * (qty / total_qty)
 
-    products.sort(key=lambda x: x['units_sold'], reverse=True)
+    if include_imported_unsold and po_items_map:
+        seen_bl_ids = set(str(p.get('bl_product_id', '')) for p in products if p.get('bl_product_id'))
+        seen_skus = set(str(p.get('sku', '')).upper() for p in products if p.get('sku'))
+        for item in cache.get("full_inventory", []):
+            bl_pid = str(item.get('bl_product_id', '') or '')
+            sku = str(item.get('sku', '') or '')
+            sku_key = sku.upper()
+            if (bl_pid and bl_pid in seen_bl_ids) or (sku_key and sku_key in seen_skus):
+                continue
+            product_pos = po_items_map.get(bl_pid, []) if bl_pid else []
+            if not product_pos:
+                continue
+            product = {
+                'image_url': item.get('image_url', ''),
+                'product_name': item.get('product_name', ''),
+                'sku': sku,
+                'units_sold': 0,
+                'units_imported': sum_ordered_units(product_pos),
+                'current_stock': max(0, safe_int(item.get('current_stock'))),
+                'total_revenue': 0,
+                'sales_by_channel': {},
+                'category': item.get('category') or determine_category(item.get('product_name', '')),
+                'shopify_variant_id': item.get('shopify_variant_id', ''),
+                'bl_product_id': bl_pid,
+                'purchase_orders': product_pos,
+                '_revenue_by_currency': {},
+            }
+            products.append(apply_performance_metrics(product))
+            if bl_pid:
+                seen_bl_ids.add(bl_pid)
+            if sku_key:
+                seen_skus.add(sku_key)
+
+    products.sort(key=lambda x: (x.get('units_sold', 0), x.get('units_imported', 0)), reverse=True)
 
     # ========== COST ENRICHMENT ==========
     costs_by_sku, costs_by_base_sku = costs if costs else cache.get("costs", ({}, {}))
@@ -1553,12 +1794,17 @@ def build_response(orders: list, inventory: dict, po_items_map: dict, source_nam
     return {
         "total_variants": len(products),
         "total_units_sold": sum(p['units_sold'] for p in products),
+        "total_units_imported": sum(p.get('units_imported', 0) for p in products),
         "total_orders": len(orders),
         "total_revenue": round(total_revenue, 2),
         "net_revenue": net_revenue,
         "total_cost": round(total_cost, 2),
         "profit": profit,
         "profit_margin": profit_margin,
+        "sold_out_count": sum(1 for p in products if p.get('performance_status') == 'sold_out'),
+        "not_sold_count": sum(1 for p in products if p.get('performance_status') == 'not_sold'),
+        "fast_mover_count": sum(1 for p in products if p.get('performance_status') == 'fast_mover'),
+        "low_stock_selling_count": sum(1 for p in products if p.get('performance_status') == 'low_stock'),
         "channel_breakdown": channel_breakdown,
         "exchange_rates_as_of": EXCHANGE_RATES_AS_OF,
         "products": products
@@ -1576,6 +1822,12 @@ def refresh_data():
     cache["is_refreshing"] = True
 
     try:
+        try:
+            cache["order_statuses"] = fetch_order_statuses()
+            logger.info(f"Loaded {len(cache['order_statuses'])} order statuses")
+        except Exception as e:
+            logger.warning(f"Order status loading failed: {e}")
+
         # Fetch order sources for proper channel names
         order_sources = fetch_order_sources()
         cache["order_sources"] = order_sources
@@ -1600,7 +1852,7 @@ def refresh_data():
 
         # Also fetch recent orders from ALL statuses for date-filtered views
         # (Today/Yesterday/etc. should show all orders, not just shipped ones)
-        all_recent = fetch_recent_orders_all_statuses(days=90)
+        all_recent = fetch_recent_orders_all_statuses(days=RECENT_ALL_STATUS_DAYS)
 
         # Save ALL fetched orders to the database (survives BaseLinker's 3-month archive)
         all_fetched = {o['order_id']: o for o in orders}
@@ -2477,23 +2729,61 @@ async def track_action(req: TrackRequest, user: dict = Depends(get_current_user)
 
 # ========== PROTECTED DATA ROUTES ==========
 
-def strip_sales_data_for_stock_only(data: dict) -> dict:
-    """Remove sensitive sales/financial data for stock_only users. They only see products + stock."""
-    import copy
+def strip_financial_fields(data: dict, keep_sales_metrics: bool) -> dict:
+    """Remove all money/cost fields while optionally preserving sales-performance metrics."""
     stripped = copy.deepcopy(data)
-    stripped.pop("total_units_sold", None)
-    stripped.pop("total_orders", None)
-    stripped.pop("total_revenue", None)
-    stripped.pop("net_revenue", None)
-    stripped.pop("profit", None)
-    stripped.pop("profit_margin", None)
-    stripped.pop("channel_breakdown", None)
+    for key in (
+        "total_revenue", "net_revenue", "total_cost", "profit",
+        "profit_margin", "exchange_rates_as_of",
+    ):
+        stripped.pop(key, None)
+
+    if "channel_breakdown" in stripped:
+        stripped["channel_breakdown"] = [
+            {"channel": ch.get("channel"), "units": ch.get("units", 0)}
+            for ch in stripped.get("channel_breakdown", [])
+        ]
+
+    if not keep_sales_metrics:
+        for key in (
+            "total_units_sold", "total_units_imported", "total_orders",
+            "sold_out_count", "not_sold_count", "fast_mover_count",
+            "low_stock_selling_count", "channel_breakdown",
+        ):
+            stripped.pop(key, None)
+
     for p in stripped.get("products", []):
-        p.pop("units_sold", None)
-        p.pop("total_revenue", None)
-        p.pop("sales_by_channel", None)
-        p.pop("purchase_orders", None)
+        for key in ("total_revenue", "unit_cost", "total_cost", "cost_match", "_revenue_by_currency"):
+            p.pop(key, None)
+
+        if keep_sales_metrics:
+            p["purchase_orders"] = [
+                strip_po_item_financials(po)
+                for po in p.get("purchase_orders", [])
+            ]
+        else:
+            for key in (
+                "units_sold", "units_imported", "sell_through_rate",
+                "performance_status", "is_sold_out", "sales_by_channel",
+                "purchase_orders",
+            ):
+                p.pop(key, None)
+
     return stripped
+
+
+def data_for_user_role(data: dict, user: dict) -> dict:
+    if has_financial_access(user):
+        return data
+    if is_employee_user(user):
+        return strip_financial_fields(data, keep_sales_metrics=True)
+    return strip_financial_fields(data, keep_sales_metrics=False)
+
+
+@app.get("/api/order-statuses")
+async def get_order_statuses_api(user: dict = Depends(get_current_user)):
+    return order_status_payload(set(DEFAULT_DASHBOARD_STATUS_IDS))
+
 
 @app.get("/api/inventory/search")
 async def search_inventory(
@@ -2516,7 +2806,7 @@ async def search_inventory(
         if (query_normalized in strip_diacritics((p.get('product_name') or '').lower())
             or query_normalized in strip_diacritics((p.get('sku') or '').lower())
             or query_normalized in str(p.get('bl_product_id', ''))):
-            matches.append(p)
+            matches.append(copy.deepcopy(p))
 
     # Enrich with cost data
     costs_by_sku, costs_by_base_sku = cache.get("costs", ({}, {}))
@@ -2525,13 +2815,17 @@ async def search_inventory(
         p['unit_cost'] = round(cost, 2)
         p['cost_match'] = match_type
 
-    is_stock_only = user.get("role") in ("stock_only", "viewer")
-    if is_stock_only:
+    if not has_financial_access(user):
         for p in matches:
             p.pop('unit_cost', None)
             p.pop('cost_match', None)
             p.pop('total_revenue', None)
+    if is_stock_only_user(user):
+        for p in matches:
             p.pop('units_sold', None)
+            p.pop('units_imported', None)
+            p.pop('sell_through_rate', None)
+            p.pop('performance_status', None)
 
     return {"products": matches[:50], "total": len(matches)}
 
@@ -2602,16 +2896,20 @@ async def full_inventory(
     total = len(filtered)
     pages = max(1, (total + per_page - 1) // per_page)
     start = (page - 1) * per_page
-    page_items = filtered[start:start + per_page]
+    page_items = [copy.deepcopy(p) for p in filtered[start:start + per_page]]
 
-    # Strip sensitive data for stock_only users
-    is_stock_only = user.get("role") in ("stock_only", "viewer")
-    if is_stock_only:
+    # Strip sensitive data for non-financial users
+    if not has_financial_access(user):
         for p in page_items:
             p.pop('unit_cost', None)
             p.pop('cost_match', None)
             p.pop('total_revenue', None)
+    if is_stock_only_user(user):
+        for p in page_items:
             p.pop('units_sold', None)
+            p.pop('units_imported', None)
+            p.pop('sell_through_rate', None)
+            p.pop('performance_status', None)
 
     return {
         "products": page_items,
@@ -2632,25 +2930,37 @@ async def full_inventory(
 async def get_sales(
     date_from: str = Query("", description="Start date YYYY-MM-DD"),
     date_to: str = Query("", description="End date YYYY-MM-DD"),
+    status_ids: str = Query("", description="Comma-separated BaseLinker order status IDs"),
     user: dict = Depends(get_current_user)
 ):
-    is_stock_only = user.get("role") in ("stock_only", "viewer")
+    selected_status_ids = parse_order_status_ids(status_ids)
+    is_employee = is_employee_user(user)
+    if is_employee and not date_from and not date_to:
+        now = datetime.now(POLISH_TZ)
+        first_this_month = now.replace(day=1)
+        last_month_end = first_this_month - timedelta(days=1)
+        last_month_start = last_month_end.replace(day=1)
+        date_from = last_month_start.strftime("%Y-%m-%d")
+        date_to = last_month_end.strftime("%Y-%m-%d")
 
     if cache["data"] is None:
         return JSONResponse(status_code=503, content={"error": "Data not loaded yet. Please wait..."})
 
     # No date params -> return cached "all time" data (fast path, no regression)
     if not date_from and not date_to:
+        raw_orders = cache.get("raw_orders") or []
+        status_counts = count_orders_by_status(raw_orders)
         result = {
             "last_updated": cache["last_updated"],
             "next_refresh": cache["next_refresh"],
             "is_refreshing": cache["is_refreshing"],
+            **order_status_payload(set(FINANCIAL_STATUS_IDS), status_counts),
             **cache["data"]
         }
-        return strip_sales_data_for_stock_only(result) if is_stock_only else result
+        return data_for_user_role(result, user)
 
-    # With date params -> use ALL-status orders (not just Wysłane)
-    # so "Yesterday" shows all orders, not just shipped ones
+    # With date params -> use cached recent orders from all statuses, then apply
+    # the explicit BaseLinker status selection.
     raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
     inventory = cache.get("inventory") or {}
     po_items_map = cache.get("po_items_by_bl_id") or {}
@@ -2666,31 +2976,46 @@ async def get_sales(
             dt_from = datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=POLISH_TZ)
             ts_from = int(dt_from.timestamp())
         else:
+            dt_from = datetime.fromtimestamp(0, POLISH_TZ)
             ts_from = 0
         if date_to:
             dt_to = datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=POLISH_TZ) + timedelta(days=1)
             ts_to = int(dt_to.timestamp())
         else:
+            dt_to = datetime.now(POLISH_TZ) + timedelta(days=1)
             ts_to = int(time.time()) + 86400
     except ValueError:
         return JSONResponse(status_code=400, content={"error": "Invalid date format. Use YYYY-MM-DD."})
 
     if ts_from > ts_to:
         return JSONResponse(status_code=400, content={"error": "date_from must be before date_to"})
+    if is_employee and (dt_to - dt_from).days > EMPLOYEE_MAX_RANGE_DAYS:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Employee date range is limited to {EMPLOYEE_MAX_RANGE_DAYS} days."}
+        )
 
-    # Filter orders by date_add (order creation time) — NOT date_confirmed
-    # date_add is the actual order date; date_confirmed can be days later
-    # Include ALL statuses except cancelled — so new/paid/packed orders all show up
-    filtered_orders = []
+    # Filter orders by date_add (order creation time) — NOT date_confirmed.
+    # date_add is the actual order date; date_confirmed can be days later.
+    date_matched_orders = []
     for order in raw_orders:
         order_ts = order.get("date_add", 0)
-        order_status = order.get("order_status_id") if order.get("order_status_id") is not None else order.get("status_id")
-        if order_status in EXCLUDED_STATUS_IDS:
-            continue
         if isinstance(order_ts, (int, float)) and ts_from <= order_ts < ts_to:
-            filtered_orders.append(order)
+            date_matched_orders.append(order)
 
-    response_data = build_response(filtered_orders, inventory, po_items_map, order_sources)
+    status_counts = count_orders_by_status(date_matched_orders)
+    filtered_orders = [
+        order for order in date_matched_orders
+        if get_order_status_id(order) in selected_status_ids
+    ]
+
+    response_data = build_response(
+        filtered_orders,
+        inventory,
+        po_items_map,
+        order_sources,
+        include_imported_unsold=is_employee,
+    )
 
     result = {
         "last_updated": cache["last_updated"],
@@ -2698,16 +3023,17 @@ async def get_sales(
         "is_refreshing": cache["is_refreshing"],
         "date_from": date_from,
         "date_to": date_to,
+        **order_status_payload(selected_status_ids, status_counts),
         **response_data
     }
-    return strip_sales_data_for_stock_only(result) if is_stock_only else result
+    return data_for_user_role(result, user)
 
 
 @app.get("/api/purchase-orders")
 async def get_purchase_orders(user: dict = Depends(get_current_user)):
     """Return the list of purchase orders"""
     return {
-        "purchase_orders": cache.get("purchase_orders", [])
+        "purchase_orders": sanitize_purchase_orders_for_user(cache.get("purchase_orders", []), user)
     }
 
 
@@ -2879,14 +3205,19 @@ async def download_excel(
     search: str = Query("", description="Search text or Shopify URL"),
     date_from: str = Query("", description="Start date YYYY-MM-DD"),
     date_to: str = Query("", description="End date YYYY-MM-DD"),
+    status_ids: str = Query("", description="Comma-separated BaseLinker order status IDs"),
     user: dict = Depends(get_current_user)
 ):
+    if not has_financial_access(user):
+        raise HTTPException(status_code=403, detail="Export is available only to full-access users.")
+
     if cache["data"] is None:
         return JSONResponse(status_code=503, content={"error": "Data not loaded yet"})
 
     # Determine source products based on date filter
     if date_from or date_to:
-        # Use ALL-status orders for date-filtered views (same as /api/sales)
+        selected_status_ids = parse_order_status_ids(status_ids)
+        # Use cached recent orders from all statuses, then apply the selected statuses.
         raw_orders = cache.get("all_recent_orders") or cache.get("raw_orders")
         inventory = cache.get("inventory") or {}
         po_items_map = cache.get("po_items_by_bl_id") or {}
@@ -2912,7 +3243,7 @@ async def download_excel(
         filtered_orders = [
             o for o in raw_orders
             if ts_from <= o.get("date_add", 0) < ts_to
-            and (o.get("order_status_id") if o.get("order_status_id") is not None else o.get("status_id")) not in EXCLUDED_STATUS_IDS
+            and get_order_status_id(o) in selected_status_ids
         ]
         source_data = build_response(filtered_orders, inventory, po_items_map, order_sources)
     else:
@@ -2942,6 +3273,8 @@ async def download_excel(
     if date_from or date_to:
         date_label = f"{date_from or 'start'} to {date_to or 'now'}"
         filter_parts.append(f"Period: {date_label}")
+    if status_ids:
+        filter_parts.append(f"Statuses: {status_ids}")
     if category:
         filter_parts.append(f"Category: {category}")
     if po:

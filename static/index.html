@@ -84,6 +84,20 @@
         .filter-bar input { min-width: 280px; }
         .filter-bar label { font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.3px; }
         .filter-group { display: flex; flex-direction: column; gap: 4px; }
+        .status-filter { position: relative; min-width: 240px; }
+        .status-filter-button { min-width: 240px; padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 6px; background: white; font-size: 13px; color: #333; text-align: left; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .status-filter-button:focus { outline: none; border-color: #4472C4; box-shadow: 0 0 0 2px rgba(68,114,196,0.15); }
+        .status-filter-button::after { content: '\25BE'; font-size: 10px; color: #666; }
+        .status-filter-menu { display: none; position: absolute; top: calc(100% + 6px); left: 0; width: 320px; max-height: 360px; overflow-y: auto; background: white; border: 1px solid #d0d0d0; border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,0.14); padding: 8px; z-index: 20; }
+        .status-filter.open .status-filter-menu { display: block; }
+        .status-filter-actions { display: flex; gap: 6px; padding: 4px 4px 8px; border-bottom: 1px solid #eee; margin-bottom: 6px; }
+        .status-filter-action { border: 1px solid #d0d0d0; background: #f8f9fa; color: #333; border-radius: 5px; padding: 5px 8px; font-size: 12px; cursor: pointer; }
+        .status-option { display: flex; align-items: center; gap: 8px; padding: 7px 6px; border-radius: 6px; cursor: pointer; font-size: 13px; color: #333; }
+        .status-option:hover { background: #f5f7fb; }
+        .status-option input[type="checkbox"] { min-width: 14px; width: 14px; height: 14px; padding: 0; border-radius: 3px; box-shadow: none; }
+        .status-color-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.12); }
+        .status-option-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .status-option-count { color: #6b7280; font-size: 12px; }
         .container { padding: 20px 30px; }
         .loading { text-align: center; padding: 60px; color: #666; }
         .spinner { width: 40px; height: 40px; border: 4px solid #e0e0e0; border-top-color: #4472C4; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
@@ -230,6 +244,10 @@
             font-size: 15px;
             background: white;
         }
+        .mobile-status-list { display: flex; flex-direction: column; gap: 6px; }
+        .mobile-status-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+        .mobile-status-actions button { flex: 1; padding: 8px 10px; border: 1px solid #d0d0d0; border-radius: 8px; background: #f8f9fa; font-size: 13px; }
+        .mobile-status-list .status-option { padding: 9px 6px; }
         .mobile-filter-apply {
             width: 100%;
             padding: 14px;
@@ -374,18 +392,34 @@
         body.role-stock-only .channel-bar-card,
         body.role-stock-only .stats-column .stat-card:nth-child(2),
         body.role-stock-only .stats-column .stat-card:nth-child(3),
-        body.role-stock-only th:nth-child(5),
-        body.role-stock-only td:nth-child(5),
-        body.role-stock-only .detail-section:nth-child(1),
-        body.role-stock-only .detail-section:nth-child(2),
-        body.role-stock-only .detail-section:nth-child(3),
-        body.role-stock-only .summary,
         body.role-stock-only .btn-secondary { display: none !important; }
         body.role-stock-only .header-stats { grid-template-columns: auto; }
+        body.role-employee .financial-panel,
+        body.role-employee .btn-secondary,
+        body.role-employee #nav-download,
+        body.role-employee [data-preset="today"],
+        body.role-employee [data-preset="yesterday"],
+        body.role-employee [data-preset="month"] { display: none !important; }
+
+        .performance-cards { display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); gap: 10px; margin-bottom: 12px; }
+        .performance-card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+        .performance-card .metric { font-size: 22px; font-weight: 700; color: #1f2937; line-height: 1.1; }
+        .performance-card .label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 4px; }
+        .perf-status { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .perf-status.sold_out { background: #fee2e2; color: #991b1b; }
+        .perf-status.not_sold { background: #f3f4f6; color: #374151; }
+        .perf-status.fast_mover { background: #dcfce7; color: #166534; }
+        .perf-status.low_stock { background: #ffedd5; color: #9a3412; }
+        .perf-status.slow_mover { background: #fef3c7; color: #92400e; }
+        .perf-status.selling, .perf-status.stock_only { background: #dbeafe; color: #1e40af; }
+        @media (max-width: 900px) {
+            .performance-cards { grid-template-columns: repeat(2, minmax(130px, 1fr)); padding: 0 12px; }
+        }
 
         .role-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; }
         .role-badge.role-admin { background: #fff3cd; color: #856404; }
         .role-badge.role-full-access { background: #d4edda; color: #155724; }
+        .role-badge.role-employee { background: #dbeafe; color: #1d4ed8; }
         .role-badge.role-stock-only { background: #e2e3e5; color: #383d41; }
         .role-hint { font-size: 11px; color: #888; margin-top: 6px; padding: 8px; background: #f8f9fa; border-radius: 6px; line-height: 1.5; }
     </style>
@@ -445,6 +479,7 @@
             <label>Role</label>
             <select id="admin-user-role" onchange="updateRoleHint()">
                 <option value="stock_only">Stock Only</option>
+                <option value="employee">Employee</option>
                 <option value="full_access">Full Access</option>
                 <option value="admin">Admin</option>
             </select>
@@ -570,6 +605,28 @@
                 <option value="" data-i18n="allPOs">All Purchase Orders</option>
             </select>
         </div>
+        <div class="filter-group status-filter" id="status-filter">
+            <label data-i18n="orderStatusLabel">Order Status</label>
+            <button type="button" class="status-filter-button" id="status-filter-button" onclick="toggleStatusMenu()" data-i18n="statusDefaults">Default statuses</button>
+            <div class="status-filter-menu" id="status-filter-menu">
+                <div class="status-filter-actions">
+                    <button type="button" class="status-filter-action" onclick="selectDefaultStatuses()" data-i18n="statusDefaults">Default statuses</button>
+                    <button type="button" class="status-filter-action" onclick="selectAllStatuses()" data-i18n="allStatuses">All statuses</button>
+                </div>
+                <div id="status-options"></div>
+            </div>
+        </div>
+        <div class="filter-group">
+            <label data-i18n="performanceLabel">Performance</label>
+            <select id="filter-performance" onchange="applyFilters()">
+                <option value="" data-i18n="allPerformance">All Performance</option>
+                <option value="sold_out" data-i18n="soldOut">Sold Out</option>
+                <option value="not_sold" data-i18n="notSold">No Sales</option>
+                <option value="fast_mover" data-i18n="fastMover">Fast Movers</option>
+                <option value="slow_mover" data-i18n="slowMover">Slow Movers</option>
+                <option value="low_stock" data-i18n="lowStockSelling">Low Stock Selling</option>
+            </select>
+        </div>
         <div class="filter-group">
             <label data-i18n="searchLabel">Search</label>
             <input type="text" id="filter-search" placeholder="Search by name, SKU, or paste Shopify URL..." oninput="applyFilters()">
@@ -669,6 +726,25 @@
                 <label data-i18n="purchaseOrderLabel">Purchase Order</label>
                 <select id="mobile-filter-po">
                     <option value="" data-i18n="allPOs">All Purchase Orders</option>
+                </select>
+            </div>
+            <div class="mobile-filter-group">
+                <label data-i18n="orderStatusLabel">Order Status</label>
+                <div class="mobile-status-actions">
+                    <button type="button" onclick="selectDefaultStatuses(false)" data-i18n="statusDefaults">Default statuses</button>
+                    <button type="button" onclick="selectAllStatuses(false)" data-i18n="allStatuses">All statuses</button>
+                </div>
+                <div class="mobile-status-list" id="mobile-status-options"></div>
+            </div>
+            <div class="mobile-filter-group">
+                <label data-i18n="performanceLabel">Performance</label>
+                <select id="mobile-filter-performance">
+                    <option value="" data-i18n="allPerformance">All Performance</option>
+                    <option value="sold_out" data-i18n="soldOut">Sold Out</option>
+                    <option value="not_sold" data-i18n="notSold">No Sales</option>
+                    <option value="fast_mover" data-i18n="fastMover">Fast Movers</option>
+                    <option value="slow_mover" data-i18n="slowMover">Slow Movers</option>
+                    <option value="low_stock" data-i18n="lowStockSelling">Low Stock Selling</option>
                 </select>
             </div>
             <div class="mobile-filter-group">
@@ -782,6 +858,8 @@
             const adminBtn = document.getElementById('admin-panel-btn');
             const logoutBtn = document.getElementById('logout-btn');
             const navAdmin = document.getElementById('nav-admin');
+            if (adminBtn) adminBtn.style.display = 'none';
+            if (navAdmin) navAdmin.style.display = 'none';
             if (currentUser) {
                 if (badge) { badge.textContent = currentUser.email; badge.style.display = ''; }
                 if (logoutBtn) logoutBtn.style.display = '';
@@ -870,6 +948,7 @@
             } else {
                 hideAuthScreen();
                 startHeartbeat();
+                configureDateRangeForRole();
                 fetchSalesData();
             }
         }
@@ -893,6 +972,7 @@
                     localStorage.setItem('bl_user', JSON.stringify(currentUser));
                     hideAuthScreen();
                     startHeartbeat();
+                    configureDateRangeForRole();
                     fetchSalesData();
                 } else {
                     errEl.textContent = data.detail || 'Error setting password';
@@ -986,6 +1066,11 @@
                     permissions: 'Sales, revenue, orders, financials, stock, export',
                     hint: 'Can see all sales data, revenue, profit, financials, stock levels, and export reports. Cannot manage users.'
                 },
+                employee: {
+                    label: 'Employee',
+                    permissions: 'Units sold, imported quantity, stock, channels, performance filters',
+                    hint: 'Can see sales-performance metrics only: units sold, imported quantities, stock, channels, sold-out and slow/fast mover filters. Cannot see revenue, costs, profit, margins, PO costs, exports, or admin logs.'
+                },
                 stock_only: {
                     label: 'Stock Only',
                     permissions: 'Product names, SKUs, images, stock levels',
@@ -1013,12 +1098,31 @@
         }
 
         function applyRolePermissions() {
-            document.body.classList.remove('role-stock-only', 'role-full-access', 'role-admin');
+            document.body.classList.remove('role-stock-only', 'role-full-access', 'role-admin', 'role-employee');
             if (!currentUser) return;
             const effectiveRole = currentUser.role === 'viewer' ? 'stock_only'
                 : currentUser.role === 'editor' ? 'full_access'
                 : currentUser.role;
             document.body.classList.add('role-' + effectiveRole);
+        }
+
+        function effectiveRole() {
+            if (!currentUser) return 'stock_only';
+            if (currentUser.role === 'viewer') return 'stock_only';
+            if (currentUser.role === 'editor') return 'full_access';
+            return currentUser.role || 'stock_only';
+        }
+
+        function canSeeFinancials() {
+            return ['admin', 'full_access'].includes(effectiveRole());
+        }
+
+        function canSeePerformanceMetrics() {
+            return ['admin', 'full_access', 'employee'].includes(effectiveRole());
+        }
+
+        function isEmployeeRole() {
+            return effectiveRole() === 'employee';
         }
 
         // ========== ADMIN PANEL ==========
@@ -1283,8 +1387,10 @@
         const translations = {
             en: {
                 dashboardTitle: 'BL Sales Dashboard',
+                employeeDashboardTitle: 'Product Performance',
                 products: 'Products',
                 unitsSold: 'Units Sold',
+                unitsImported: 'Imported',
                 orders: 'Orders',
                 lastUpdated: 'Last updated',
                 nextRefresh: 'Next refresh in',
@@ -1292,23 +1398,41 @@
                 downloadExcel: 'Download Excel',
                 categoryLabel: 'Category',
                 purchaseOrderLabel: 'Purchase Order',
+                orderStatusLabel: 'Order Status',
+                statusDefaults: 'Default statuses',
+                allStatuses: 'All statuses',
+                statusesSelected: 'statuses selected',
+                noStatusesSelected: 'No statuses selected',
+                performanceLabel: 'Performance',
                 searchLabel: 'Search',
                 allCategories: 'All Categories',
                 allPOs: 'All Purchase Orders',
+                allPerformance: 'All Performance',
                 searchPlaceholder: 'Search by name, SKU, or paste Shopify URL...',
                 colImage: 'Image',
                 colName: 'Product Name',
                 colSku: 'SKU',
                 colCategory: 'Category',
                 colUnitsSold: 'Units Sold',
+                colUnitsImported: 'Imported',
+                colSellThrough: 'Sell-through',
                 colStock: 'Stock',
+                colStatus: 'Status',
                 showing: 'Showing',
                 of: 'of',
                 productsSuffix: 'products',
                 totalUnitsSold: 'Total units sold',
+                totalUnitsImported: 'Total imported',
                 outOfStock: 'Out of stock',
+                soldOut: 'Sold Out',
+                notSold: 'No Sales',
+                fastMover: 'Fast Movers',
+                slowMover: 'Slow Movers',
+                lowStockSelling: 'Low Stock Selling',
+                sellThrough: 'Sell-through',
                 salesStats: 'Sales Statistics',
                 totalUnitsSoldDetail: 'Total Units Sold',
+                totalUnitsImportedDetail: 'Imported Units',
                 totalRevenueDetail: 'Total Revenue',
                 avgPricePerUnit: 'Avg Price per Unit',
                 salesChannels: 'Sales Channels',
@@ -1329,6 +1453,7 @@
                 yesterday: 'Yesterday',
                 thisMonth: 'This Month',
                 lastMonth: 'Last Month',
+                last3Months: 'Last 3 Months',
                 custom: 'Custom',
                 from: 'From',
                 to: 'To',
@@ -1350,8 +1475,10 @@
             },
             vi: {
                 dashboardTitle: 'B\u1ea3ng \u0111i\u1ec1u khi\u1ec3n BL',
+                employeeDashboardTitle: 'Hi\u1ec7u su\u1ea5t s\u1ea3n ph\u1ea9m',
                 products: 'S\u1ea3n ph\u1ea9m',
                 unitsSold: 'S\u1ed1 l\u01b0\u1ee3ng \u0111\u00e3 b\u00e1n',
+                unitsImported: '\u0110\u00e3 nh\u1eadp',
                 orders: '\u0110\u01a1n h\u00e0ng',
                 lastUpdated: 'C\u1eadp nh\u1eadt l\u1ea7n cu\u1ed1i',
                 nextRefresh: 'L\u00e0m m\u1edbi sau',
@@ -1359,23 +1486,41 @@
                 downloadExcel: 'T\u1ea3i Excel',
                 categoryLabel: 'Danh m\u1ee5c',
                 purchaseOrderLabel: '\u0110\u01a1n mua h\u00e0ng',
+                orderStatusLabel: 'Tr\u1ea1ng th\u00e1i \u0111\u01a1n',
+                statusDefaults: 'Tr\u1ea1ng th\u00e1i m\u1eb7c \u0111\u1ecbnh',
+                allStatuses: 'T\u1ea5t c\u1ea3 tr\u1ea1ng th\u00e1i',
+                statusesSelected: 'tr\u1ea1ng th\u00e1i \u0111\u00e3 ch\u1ecdn',
+                noStatusesSelected: 'Ch\u01b0a ch\u1ecdn tr\u1ea1ng th\u00e1i',
+                performanceLabel: 'Hi\u1ec7u su\u1ea5t',
                 searchLabel: 'T\u00ecm ki\u1ebfm',
                 allCategories: 'T\u1ea5t c\u1ea3 danh m\u1ee5c',
                 allPOs: 'T\u1ea5t c\u1ea3 \u0111\u01a1n mua',
+                allPerformance: 'T\u1ea5t c\u1ea3 hi\u1ec7u su\u1ea5t',
                 searchPlaceholder: 'T\u00ecm theo t\u00ean, SKU, ho\u1eb7c d\u00e1n URL Shopify...',
                 colImage: 'H\u00ecnh \u1ea3nh',
                 colName: 'T\u00ean s\u1ea3n ph\u1ea9m',
                 colSku: 'SKU',
                 colCategory: 'Danh m\u1ee5c',
                 colUnitsSold: '\u0110\u00e3 b\u00e1n',
+                colUnitsImported: '\u0110\u00e3 nh\u1eadp',
+                colSellThrough: 'T\u1ef7 l\u1ec7 b\u00e1n',
                 colStock: 'T\u1ed3n kho',
+                colStatus: 'Tr\u1ea1ng th\u00e1i',
                 showing: 'Hi\u1ec3n th\u1ecb',
                 of: 'tr\u00ean',
                 productsSuffix: 's\u1ea3n ph\u1ea9m',
                 totalUnitsSold: 'T\u1ed5ng \u0111\u00e3 b\u00e1n',
+                totalUnitsImported: 'T\u1ed5ng \u0111\u00e3 nh\u1eadp',
                 outOfStock: 'H\u1ebft h\u00e0ng',
+                soldOut: 'H\u1ebft h\u00e0ng',
+                notSold: 'Ch\u01b0a b\u00e1n',
+                fastMover: 'B\u00e1n nhanh',
+                slowMover: 'B\u00e1n ch\u1eadm',
+                lowStockSelling: 'S\u1eafp h\u1ebft h\u00e0ng',
+                sellThrough: 'T\u1ef7 l\u1ec7 b\u00e1n',
                 salesStats: 'Th\u1ed1ng k\u00ea b\u00e1n h\u00e0ng',
                 totalUnitsSoldDetail: 'T\u1ed5ng s\u1ed1 l\u01b0\u1ee3ng b\u00e1n',
+                totalUnitsImportedDetail: 'S\u1ed1 l\u01b0\u1ee3ng nh\u1eadp',
                 totalRevenueDetail: 'T\u1ed5ng doanh thu',
                 avgPricePerUnit: 'Gi\u00e1 trung b\u00ecnh/\u0111\u01a1n v\u1ecb',
                 salesChannels: 'K\u00eanh b\u00e1n h\u00e0ng',
@@ -1396,6 +1541,7 @@
                 yesterday: 'H\u00f4m qua',
                 thisMonth: 'Th\u00e1ng n\u00e0y',
                 lastMonth: 'Th\u00e1ng tr\u01b0\u1edbc',
+                last3Months: '3 th\u00e1ng qua',
                 custom: 'T\u00f9y ch\u1ecdn',
                 from: 'T\u1eeb',
                 to: '\u0110\u1ebfn',
@@ -1442,7 +1588,7 @@
             } else {
                 enEl.className = 'inactive-lang'; viEl.className = 'active-lang';
             }
-            document.getElementById('dashboard-title').textContent = t('dashboardTitle');
+            document.getElementById('dashboard-title').textContent = isEmployeeRole() ? t('employeeDashboardTitle') : t('dashboardTitle');
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
                 if (el.tagName === 'OPTION') { el.textContent = t(key); }
@@ -1453,6 +1599,8 @@
             if (searchInput) searchInput.placeholder = t('searchPlaceholder');
             const mobileSearch = document.getElementById('mobile-filter-search');
             if (mobileSearch) mobileSearch.placeholder = t('searchPlaceholder');
+            updateMetricLabels();
+            updateStatusButton();
         }
 
         // ========== MOBILE NAVIGATION ==========
@@ -1460,6 +1608,13 @@
 
         function switchMobileView(view) {
             currentMobileView = view;
+            if (view === 'filter') {
+                document.getElementById('mobile-filter-category').value = document.getElementById('filter-category').value;
+                document.getElementById('mobile-filter-po').value = document.getElementById('filter-po').value;
+                document.getElementById('mobile-filter-performance').value = document.getElementById('filter-performance').value;
+                document.getElementById('mobile-filter-search').value = document.getElementById('filter-search').value;
+                renderStatusControls();
+            }
             // Update nav buttons
             document.querySelectorAll('.floating-nav button').forEach(btn => btn.classList.remove('active'));
             const navBtn = document.getElementById('nav-' + view);
@@ -1489,8 +1644,10 @@
             // Sync mobile filters to desktop
             document.getElementById('filter-category').value = document.getElementById('mobile-filter-category').value;
             document.getElementById('filter-po').value = document.getElementById('mobile-filter-po').value;
+            document.getElementById('filter-performance').value = document.getElementById('mobile-filter-performance').value;
             document.getElementById('filter-search').value = document.getElementById('mobile-filter-search').value;
             applyFilters();
+            fetchSalesData();
             switchMobileView('dashboard');
         }
 
@@ -1507,6 +1664,9 @@
         }
 
         function selectPreset(preset) {
+            if (isEmployeeRole() && !['last-month', '3months', 'custom'].includes(preset)) {
+                preset = 'last-month';
+            }
             activePreset = preset;
             const now = new Date();
             const today = formatDate(now);
@@ -1559,10 +1719,10 @@
             const fromInput = document.getElementById('date-from').value;
             const toInput = document.getElementById('date-to').value;
             if (!fromInput || !toInput) return;
-            // Enforce max 70 days
+            // Enforce bounded employee analysis windows.
             const diffDays = Math.round((new Date(toInput) - new Date(fromInput)) / 86400000);
             if (diffDays < 0) { alert('Start date must be before end date.'); return; }
-            if (diffDays > 70) { alert('Maximum range is 70 days.'); return; }
+            if (isEmployeeRole() && diffDays > 95) { alert('Employee custom range is limited to 95 days.'); return; }
             activeDateFrom = fromInput;
             activeDateTo = toInput;
             fetchSalesData();
@@ -1574,7 +1734,7 @@
             if (!fromVal || !toVal) return;
             const diffDays = Math.round((new Date(toVal) - new Date(fromVal)) / 86400000);
             if (diffDays < 0) { alert('Start date must be before end date.'); return; }
-            if (diffDays > 70) { alert('Maximum range is 70 days.'); return; }
+            if (isEmployeeRole() && diffDays > 95) { alert('Employee custom range is limited to 95 days.'); return; }
             activeDateFrom = fromVal;
             activeDateTo = toVal;
             activePreset = 'custom';
@@ -1610,6 +1770,35 @@
             });
         }
 
+        function setCurrentMonthRange() {
+            const now = new Date();
+            const firstOfMonth = new Date(now);
+            firstOfMonth.setDate(1);
+            activePreset = 'month';
+            activeDateFrom = formatDate(firstOfMonth);
+            activeDateTo = formatDate(now);
+        }
+
+        function setLastMonthRange() {
+            const now = new Date();
+            const firstThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastMonthEnd = new Date(firstThisMonth);
+            lastMonthEnd.setDate(0);
+            const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1);
+            activePreset = 'last-month';
+            activeDateFrom = formatDate(lastMonthStart);
+            activeDateTo = formatDate(lastMonthEnd);
+        }
+
+        function configureDateRangeForRole() {
+            if (isEmployeeRole()) {
+                setLastMonthRange();
+            } else if (!activeDateFrom || !activeDateTo) {
+                setCurrentMonthRange();
+            }
+            updateTimeBarUI();
+        }
+
         // ========== DATA ==========
         let salesData = null;
         let purchaseOrders = [];
@@ -1620,6 +1809,10 @@
         let expandedRowKey = null;
         let chartInstance = null;
         let activeChannelFilter = null;
+        const FALLBACK_DEFAULT_STATUS_IDS = ['273566', '273568', '273928', '460087'];
+        let orderStatuses = [];
+        let defaultStatusIds = [...FALLBACK_DEFAULT_STATUS_IDS];
+        let selectedStatusIds = new Set(defaultStatusIds);
 
         async function fetchSalesData() {
             try {
@@ -1627,6 +1820,7 @@
                 const params = new URLSearchParams();
                 if (activeDateFrom) params.set('date_from', activeDateFrom);
                 if (activeDateTo) params.set('date_to', activeDateTo);
+                params.set('status_ids', selectedStatusIds.size ? sortedStatusIds(selectedStatusIds).join(',') : '__none__');
                 if (params.toString()) url += '?' + params.toString();
 
                 const [salesResp, poResp] = await Promise.all([
@@ -1635,6 +1829,7 @@
                 ]);
                 if (!salesResp.ok) throw new Error('Failed to fetch data');
                 salesData = await salesResp.json();
+                syncStatusStateFromSalesData();
                 const poData = await poResp.json();
                 purchaseOrders = poData.purchase_orders || [];
                 populateFilters();
@@ -1649,18 +1844,28 @@
 
         function updateHeader() {
             if (!salesData) return;
-            document.getElementById('total-variants').textContent = salesData.total_variants;
-            document.getElementById('total-units').textContent = salesData.total_units_sold.toLocaleString();
-            document.getElementById('total-orders').textContent = salesData.total_orders.toLocaleString();
+            updateMetricLabels();
+            document.getElementById('total-variants').textContent = (salesData.total_variants || 0).toLocaleString();
+            document.getElementById('total-units').textContent = canSeePerformanceMetrics() && salesData.total_units_sold != null
+                ? salesData.total_units_sold.toLocaleString()
+                : '--';
+            document.getElementById('total-orders').textContent = isEmployeeRole()
+                ? (salesData.total_units_imported || 0).toLocaleString()
+                : (salesData.total_orders != null ? salesData.total_orders.toLocaleString() : '--');
             const luEl = document.getElementById('last-updated');
             if (luEl) luEl.textContent = new Date(salesData.last_updated).toLocaleTimeString();
             renderGlobalChannelBars();
             updateFinancials();
         }
 
+        function updateMetricLabels() {
+            const thirdLabel = document.querySelector('.stats-column .stat-card:nth-child(3) .stat-label');
+            if (thirdLabel) thirdLabel.textContent = isEmployeeRole() ? t('unitsImported') : t('orders');
+        }
+
         // ========== FINANCIALS ==========
         function updateFinancials() {
-            if (!salesData) return;
+            if (!salesData || !canSeeFinancials()) return;
             const fmtPLN = (v) => v.toLocaleString('pl-PL', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
             const revEl = document.getElementById('fin-revenue');
@@ -1743,6 +1948,108 @@
         }
 
         // ========== FILTERS ==========
+        function statusIdListToStrings(ids) {
+            return (ids || []).map(id => String(id));
+        }
+
+        function sameStatusSet(a, b) {
+            if (a.size !== b.length) return false;
+            return b.every(id => a.has(String(id)));
+        }
+
+        function sortedStatusIds(set) {
+            return Array.from(set).sort((a, b) => Number(a) - Number(b));
+        }
+
+        function syncStatusStateFromSalesData() {
+            if (!salesData) return;
+            if (Array.isArray(salesData.order_statuses) && salesData.order_statuses.length) {
+                orderStatuses = salesData.order_statuses;
+            }
+            if (Array.isArray(salesData.default_status_ids) && salesData.default_status_ids.length) {
+                defaultStatusIds = statusIdListToStrings(salesData.default_status_ids);
+            }
+            if (Array.isArray(salesData.selected_status_ids)) {
+                selectedStatusIds = new Set(statusIdListToStrings(salesData.selected_status_ids));
+            }
+        }
+
+        function statusCount(statusId) {
+            const counts = (salesData && salesData.order_status_counts) || {};
+            return counts[String(statusId)] || 0;
+        }
+
+        function updateStatusButton() {
+            const btn = document.getElementById('status-filter-button');
+            if (!btn) return;
+            const selected = orderStatuses.filter(st => selectedStatusIds.has(String(st.id)));
+            if (selectedStatusIds.size === 0) {
+                btn.textContent = t('noStatusesSelected');
+            } else if (orderStatuses.length && selectedStatusIds.size === orderStatuses.length) {
+                btn.textContent = t('allStatuses');
+            } else if (sameStatusSet(selectedStatusIds, defaultStatusIds)) {
+                btn.textContent = t('statusDefaults');
+            } else if (selected.length === 1) {
+                btn.textContent = selected[0].name;
+            } else {
+                btn.textContent = `${selectedStatusIds.size} ${t('statusesSelected')}`;
+            }
+        }
+
+        function renderStatusOption(status, isMobile) {
+            const id = String(status.id);
+            const checked = selectedStatusIds.has(id) ? 'checked' : '';
+            const count = statusCount(id);
+            const color = escapeHtml(status.color || '#6b7280');
+            const name = escapeHtml(status.name || id);
+            return `<label class="status-option">
+                <input type="checkbox" value="${id}" ${checked} onchange="handleStatusCheckboxChange(this, ${isMobile ? 'false' : 'true'})">
+                <span class="status-color-dot" style="background:${color}"></span>
+                <span class="status-option-name" title="${name}">${name}</span>
+                <span class="status-option-count">${count}</span>
+            </label>`;
+        }
+
+        function renderStatusControls() {
+            const statuses = orderStatuses.length ? orderStatuses : defaultStatusIds.map(id => ({ id, name: id, color: '#6b7280' }));
+            const desktop = document.getElementById('status-options');
+            const mobile = document.getElementById('mobile-status-options');
+            if (desktop) desktop.innerHTML = statuses.map(st => renderStatusOption(st, false)).join('');
+            if (mobile) mobile.innerHTML = statuses.map(st => renderStatusOption(st, true)).join('');
+            updateStatusButton();
+        }
+
+        function toggleStatusMenu() {
+            const wrapper = document.getElementById('status-filter');
+            if (wrapper) wrapper.classList.toggle('open');
+        }
+
+        function selectDefaultStatuses(fetchNow = true) {
+            selectedStatusIds = new Set(defaultStatusIds);
+            renderStatusControls();
+            if (fetchNow) fetchSalesData();
+        }
+
+        function selectAllStatuses(fetchNow = true) {
+            selectedStatusIds = new Set((orderStatuses.length ? orderStatuses : defaultStatusIds).map(st => String(st.id)));
+            renderStatusControls();
+            if (fetchNow) fetchSalesData();
+        }
+
+        function handleStatusCheckboxChange(input, fetchNow = true) {
+            if (input.checked) selectedStatusIds.add(String(input.value));
+            else selectedStatusIds.delete(String(input.value));
+            renderStatusControls();
+            if (fetchNow) fetchSalesData();
+        }
+
+        document.addEventListener('click', (event) => {
+            const wrapper = document.getElementById('status-filter');
+            if (wrapper && !wrapper.contains(event.target)) {
+                wrapper.classList.remove('open');
+            }
+        });
+
         function populateFilters() {
             if (!salesData || !salesData.products) return;
 
@@ -1781,6 +2088,8 @@
                 });
                 sel.value = currentVal;
             });
+
+            renderStatusControls();
         }
 
         function getFilteredProducts() {
@@ -1795,13 +2104,16 @@
                 ).map(p => {
                     const channelUnits = p.sales_by_channel[activeChannelFilter] || 0;
                     const ratio = p.units_sold > 0 ? channelUnits / p.units_sold : 0;
-                    return {
+                    const nextProduct = {
                         ...p,
                         _original_units: p.units_sold,
-                        _original_revenue: p.total_revenue,
                         units_sold: channelUnits,
-                        total_revenue: Math.round(p.total_revenue * ratio * 100) / 100,
                     };
+                    if (canSeeFinancials()) {
+                        nextProduct._original_revenue = p.total_revenue;
+                        nextProduct.total_revenue = Math.round((p.total_revenue || 0) * ratio * 100) / 100;
+                    }
+                    return nextProduct;
                 });
             }
 
@@ -1818,6 +2130,11 @@
                     const blIdSet = new Set(po.product_ids.map(id => String(id)));
                     products = products.filter(p => blIdSet.has(String(p.bl_product_id || '')));
                 }
+            }
+
+            const performanceFilter = document.getElementById('filter-performance').value;
+            if (performanceFilter) {
+                products = products.filter(p => p.performance_status === performanceFilter);
             }
 
             const searchVal = document.getElementById('filter-search').value.trim();
@@ -1879,12 +2196,46 @@
         }
 
         // ========== RENDER ==========
+        function performanceLabel(status) {
+            const labels = {
+                sold_out: t('soldOut'),
+                not_sold: t('notSold'),
+                fast_mover: t('fastMover'),
+                slow_mover: t('slowMover'),
+                low_stock: t('lowStockSelling'),
+                selling: 'Selling',
+                stock_only: 'Stock'
+            };
+            return labels[status] || 'Stock';
+        }
+
+        function formatSellThrough(value) {
+            return value === null || value === undefined ? '-' : value + '%';
+        }
+
+        function buildPerformanceCards(products) {
+            if (!canSeePerformanceMetrics()) return '';
+            const sold = products.reduce((s, p) => s + (p.units_sold || 0), 0);
+            const imported = products.reduce((s, p) => s + (p.units_imported || 0), 0);
+            const soldOut = products.filter(p => p.performance_status === 'sold_out').length;
+            const noSales = products.filter(p => p.performance_status === 'not_sold').length;
+            const fast = products.filter(p => p.performance_status === 'fast_mover').length;
+            return `<div class="performance-cards">
+                <div class="performance-card"><div class="metric">${sold.toLocaleString()}</div><div class="label">${t('totalUnitsSold')}</div></div>
+                <div class="performance-card"><div class="metric">${imported.toLocaleString()}</div><div class="label">${t('totalUnitsImported')}</div></div>
+                <div class="performance-card"><div class="metric">${soldOut.toLocaleString()}</div><div class="label">${t('soldOut')}</div></div>
+                <div class="performance-card"><div class="metric">${noSales.toLocaleString()}</div><div class="label">${t('notSold')}</div></div>
+                <div class="performance-card"><div class="metric">${fast.toLocaleString()}</div><div class="label">${t('fastMover')}</div></div>
+            </div>`;
+        }
+
         function renderData() {
             if (!salesData || !salesData.products) {
                 document.getElementById('content').innerHTML = `<div class="loading">${t('noData')}</div>`;
                 return;
             }
 
+            const showMetrics = canSeePerformanceMetrics();
             let allProducts = getFilteredProducts();
             const searchVal = document.getElementById('filter-search').value.trim();
             let showingInventory = false;
@@ -1897,6 +2248,8 @@
             const products = [...allProducts].sort((a, b) => {
                 let aVal = a[sortColumn];
                 let bVal = b[sortColumn];
+                if (aVal === null || aVal === undefined) aVal = sortColumn === 'sell_through_rate' ? -1 : '';
+                if (bVal === null || bVal === undefined) bVal = sortColumn === 'sell_through_rate' ? -1 : '';
                 if (typeof aVal === 'string') { aVal = aVal.toLowerCase(); bVal = (bVal || '').toLowerCase(); }
                 if (sortDirection === 'asc') return aVal > bVal ? 1 : -1;
                 return aVal < bVal ? 1 : -1;
@@ -1917,8 +2270,11 @@
                     <td class="product-name" title="${escapeHtml(p.product_name)}">${escapeHtml(p.product_name)}</td>
                     <td class="sku">${escapeHtml(p.sku || '-')}</td>
                     <td><span class="category-badge">${escapeHtml(p.category || 'Other')}</span></td>
-                    <td class="units-sold">${p.units_sold}</td>
+                    ${showMetrics ? `<td class="units-sold">${(p.units_sold || 0).toLocaleString()}</td>` : ''}
+                    ${showMetrics ? `<td class="units-sold">${(p.units_imported || 0).toLocaleString()}</td>` : ''}
+                    ${showMetrics ? `<td class="units-sold">${formatSellThrough(p.sell_through_rate)}</td>` : ''}
                     <td class="stock ${stockClass}">${stockDisplay}</td>
+                    ${showMetrics ? `<td><span class="perf-status ${p.performance_status || 'stock_only'}">${performanceLabel(p.performance_status)}</span></td>` : ''}
                 </tr>`;
 
                 if (isExpanded) {
@@ -1933,10 +2289,12 @@
 
             const totalFiltered = allProducts.length;
             const totalAll = salesData.products.length;
-            const filteredUnits = allProducts.reduce((s, p) => s + p.units_sold, 0);
+            const filteredUnits = allProducts.reduce((s, p) => s + (p.units_sold || 0), 0);
+            const filteredImported = allProducts.reduce((s, p) => s + (p.units_imported || 0), 0);
             const oos = allProducts.filter(p => p.current_stock <= 0).length;
 
             document.getElementById('content').innerHTML = `
+                ${buildPerformanceCards(allProducts)}
                 <div class="table-wrapper">
                     <table>
                         <thead>
@@ -1945,8 +2303,11 @@
                                 <th onclick="sortBy('product_name')" class="${getHeaderClass('product_name')}">${t('colName')}</th>
                                 <th onclick="sortBy('sku')" class="${getHeaderClass('sku')}">${t('colSku')}</th>
                                 <th onclick="sortBy('category')" class="${getHeaderClass('category')}">${t('colCategory')}</th>
-                                <th onclick="sortBy('units_sold')" class="${getHeaderClass('units_sold')}">${t('colUnitsSold')}</th>
+                                ${showMetrics ? `<th onclick="sortBy('units_sold')" class="${getHeaderClass('units_sold')}">${t('colUnitsSold')}</th>` : ''}
+                                ${showMetrics ? `<th onclick="sortBy('units_imported')" class="${getHeaderClass('units_imported')}">${t('colUnitsImported')}</th>` : ''}
+                                ${showMetrics ? `<th onclick="sortBy('sell_through_rate')" class="${getHeaderClass('sell_through_rate')}">${t('colSellThrough')}</th>` : ''}
                                 <th onclick="sortBy('current_stock')" class="${getHeaderClass('current_stock')}">${t('colStock')}</th>
+                                ${showMetrics ? `<th onclick="sortBy('performance_status')" class="${getHeaderClass('performance_status')}">${t('colStatus')}</th>` : ''}
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
@@ -1955,7 +2316,8 @@
                         ${showingInventory
                             ? `<strong>${totalFiltered}</strong> ${t('productsSuffix')} found in inventory (no sales in selected period)`
                             : `${t('showing')} <strong>${totalFiltered}</strong> ${t('of')} <strong>${totalAll}</strong> ${t('productsSuffix')} |
-                               ${t('totalUnitsSold')}: <strong>${filteredUnits.toLocaleString()}</strong> |
+                               ${showMetrics ? `${t('totalUnitsSold')}: <strong>${filteredUnits.toLocaleString()}</strong> |
+                               ${t('totalUnitsImported')}: <strong>${filteredImported.toLocaleString()}</strong> |` : ''}
                                ${t('outOfStock')}: <strong>${oos}</strong>`
                         }
                     </div>
@@ -1973,18 +2335,23 @@
         function updateFilteredStats(filteredProducts) {
             const fmtPLN = (v) => v.toLocaleString('pl-PL', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
-            if (activeChannelFilter || document.getElementById('filter-category').value || document.getElementById('filter-po').value || document.getElementById('filter-search').value.trim()) {
+            if (activeChannelFilter || document.getElementById('filter-category').value || document.getElementById('filter-po').value || document.getElementById('filter-performance').value || document.getElementById('filter-search').value.trim()) {
                 // Show filtered stats
-                const filteredUnits = filteredProducts.reduce((s, p) => s + p.units_sold, 0);
-                const filteredRevenue = filteredProducts.reduce((s, p) => s + (p.total_revenue || 0), 0);
-                const filteredNetRevenue = filteredRevenue / 1.23;
-                const filteredCost = filteredProducts.reduce((s, p) => s + ((p.unit_cost || 0) * p.units_sold), 0);
-                const filteredProfit = filteredNetRevenue - filteredCost;
-                const filteredMargin = filteredNetRevenue > 0 ? Math.round((filteredProfit / filteredNetRevenue) * 1000) / 10 : 0;
+                const filteredUnits = filteredProducts.reduce((s, p) => s + (p.units_sold || 0), 0);
+                const filteredImported = filteredProducts.reduce((s, p) => s + (p.units_imported || 0), 0);
 
                 document.getElementById('total-variants').textContent = filteredProducts.length;
-                document.getElementById('total-units').textContent = filteredUnits.toLocaleString();
+                document.getElementById('total-units').textContent = canSeePerformanceMetrics() ? filteredUnits.toLocaleString() : '--';
+                document.getElementById('total-orders').textContent = isEmployeeRole()
+                    ? filteredImported.toLocaleString()
+                    : (salesData.total_orders != null ? salesData.total_orders.toLocaleString() : '--');
 
+                if (!canSeeFinancials()) return;
+                const filteredRevenue = filteredProducts.reduce((s, p) => s + (p.total_revenue || 0), 0);
+                const filteredNetRevenue = filteredRevenue / 1.23;
+                const filteredCost = filteredProducts.reduce((s, p) => s + ((p.unit_cost || 0) * (p.units_sold || 0)), 0);
+                const filteredProfit = filteredNetRevenue - filteredCost;
+                const filteredMargin = filteredNetRevenue > 0 ? Math.round((filteredProfit / filteredNetRevenue) * 1000) / 10 : 0;
                 const revEl = document.getElementById('fin-revenue');
                 const netEl = document.getElementById('fin-net-revenue');
                 const profitEl = document.getElementById('fin-profit');
@@ -1999,14 +2366,22 @@
                 // No filter active — restore global stats
                 if (salesData) {
                     document.getElementById('total-variants').textContent = salesData.total_variants;
-                    document.getElementById('total-units').textContent = salesData.total_units_sold.toLocaleString();
+                    document.getElementById('total-units').textContent = canSeePerformanceMetrics() && salesData.total_units_sold != null
+                        ? salesData.total_units_sold.toLocaleString()
+                        : '--';
+                    document.getElementById('total-orders').textContent = isEmployeeRole()
+                        ? (salesData.total_units_imported || 0).toLocaleString()
+                        : (salesData.total_orders != null ? salesData.total_orders.toLocaleString() : '--');
                     updateFinancials();
                 }
             }
         }
 
         function buildDetailRow(p) {
-            const avgPrice = p.units_sold > 0 ? (p.total_revenue / p.units_sold).toFixed(2) : '0.00';
+            const showMetrics = canSeePerformanceMetrics();
+            const showMoney = canSeeFinancials();
+            const colspan = showMetrics ? 9 : 5;
+            const avgPrice = showMoney && p.units_sold > 0 ? (p.total_revenue / p.units_sold).toFixed(2) : '0.00';
             const channelEntries = Object.entries(p.sales_by_channel || {});
             const channelHtml = channelEntries.length > 0
                 ? `<div class="chart-container"><canvas id="channel-chart"></canvas></div>`
@@ -2014,7 +2389,7 @@
 
             const poHtml = (p.purchase_orders && p.purchase_orders.length > 0)
                 ? `<ul class="po-list">${p.purchase_orders.map(po =>
-                    `<li><span class="po-doc">${escapeHtml(po.document_number)}</span><span>${po.quantity_ordered} ${t('qtyOrdered')} &middot; ${po.item_cost.toFixed(2)} PLN ${t('costPerUnit')}</span></li>`
+                    `<li><span class="po-doc">${escapeHtml(po.document_number)}</span><span>${po.quantity_ordered} ${t('qtyOrdered')}${showMoney && po.item_cost !== undefined ? ` &middot; ${po.item_cost.toFixed(2)} PLN ${t('costPerUnit')}` : ''}</span></li>`
                   ).join('')}</ul>`
                 : `<p style="color:#999;font-size:13px">${t('noPOs')}</p>`;
 
@@ -2024,22 +2399,29 @@
             const stockColor = p.current_stock <= 0 ? '#dc3545' : p.current_stock < 5 ? '#fd7e14' : '#28a745';
             const stockNote = p.current_stock < 0 ? ' <span style="color:#dc3545;font-size:11px;font-weight:600">(OVERSOLD)</span>' : '';
 
-            return `<tr class="detail-row"><td colspan="6">
+            const statsDetails = showMetrics ? `
+                        <div class="detail-stat"><span class="label">${t('totalUnitsSoldDetail')}</span><span class="value">${p.units_sold || 0}</span></div>
+                        <div class="detail-stat"><span class="label">${t('totalUnitsImportedDetail')}</span><span class="value">${p.units_imported || 0}</span></div>
+                        <div class="detail-stat"><span class="label">${t('sellThrough')}</span><span class="value">${formatSellThrough(p.sell_through_rate)}</span></div>
+                        <div class="detail-stat"><span class="label">${t('colStatus')}</span><span class="value">${performanceLabel(p.performance_status)}</span></div>
+                        ${showMoney ? `<div class="detail-stat"><span class="label">${t('totalRevenueDetail')}</span><span class="value">${p.total_revenue.toLocaleString('pl-PL', {minimumFractionDigits: 2})} PLN</span></div>
+                        <div class="detail-stat"><span class="label">${t('avgPricePerUnit')}</span><span class="value">${parseFloat(avgPrice).toLocaleString('pl-PL', {minimumFractionDigits: 2})} PLN</span></div>` : ''}
+                    ` : '';
+
+            return `<tr class="detail-row"><td colspan="${colspan}">
                 <div class="detail-panel">
-                    <div class="detail-section">
+                    ${showMetrics ? `<div class="detail-section">
                         <h4>${t('salesStats')}</h4>
-                        <div class="detail-stat"><span class="label">${t('totalUnitsSoldDetail')}</span><span class="value">${p.units_sold}</span></div>
-                        <div class="detail-stat"><span class="label">${t('totalRevenueDetail')}</span><span class="value">${p.total_revenue.toLocaleString('pl-PL', {minimumFractionDigits: 2})} PLN</span></div>
-                        <div class="detail-stat"><span class="label">${t('avgPricePerUnit')}</span><span class="value">${parseFloat(avgPrice).toLocaleString('pl-PL', {minimumFractionDigits: 2})} PLN</span></div>
-                    </div>
-                    <div class="detail-section">
+                        ${statsDetails}
+                    </div>` : ''}
+                    ${showMetrics ? `<div class="detail-section">
                         <h4>${t('salesChannels')}</h4>
                         ${channelHtml}
-                    </div>
-                    <div class="detail-section">
+                    </div>` : ''}
+                    ${showMetrics ? `<div class="detail-section">
                         <h4>${t('purchaseOrderHistory')}</h4>
                         ${poHtml}
-                    </div>
+                    </div>` : ''}
                     <div class="detail-section">
                         <h4>${t('stockLevel')}</h4>
                         <div class="detail-stat"><span class="label">${t('currentStock')}</span><span class="value">${p.current_stock} ${t('units')}${stockNote}</span></div>
@@ -2150,6 +2532,10 @@
         }
 
         async function downloadExcel() {
+            if (!canSeeFinancials()) {
+                alert('Export is available only to full-access users.');
+                return;
+            }
             const params = new URLSearchParams();
             const cat = document.getElementById('filter-category').value;
             const po = document.getElementById('filter-po').value;
@@ -2159,6 +2545,7 @@
             if (search) params.set('search', search);
             if (activeDateFrom) params.set('date_from', activeDateFrom);
             if (activeDateTo) params.set('date_to', activeDateTo);
+            params.set('status_ids', selectedStatusIds.size ? sortedStatusIds(selectedStatusIds).join(',') : '__none__');
             const qs = params.toString();
             try {
                 const resp = await authFetch('/api/download' + (qs ? '?' + qs : ''));
@@ -2178,12 +2565,7 @@
         // ========== INIT ==========
         function initApp() {
             applyLanguage();
-            // Set initial date range to "This Month"
-            const now = new Date();
-            const firstOfMonth = new Date(now);
-            firstOfMonth.setDate(1);
-            activeDateFrom = formatDate(firstOfMonth);
-            activeDateTo = formatDate(now);
+            setCurrentMonthRange();
             updateTimeBarUI();
             const savedToken = localStorage.getItem('bl_auth_token');
             const savedUser = localStorage.getItem('bl_user');
@@ -2199,6 +2581,7 @@
                                 localStorage.setItem('bl_user', JSON.stringify(currentUser));
                                 hideAuthScreen();
                                 startHeartbeat();
+                                configureDateRangeForRole();
                                 fetchSalesData();
                                 setInterval(fetchSalesData, 300000);
                             });
